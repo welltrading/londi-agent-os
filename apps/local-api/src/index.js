@@ -1,19 +1,23 @@
 import { listSupportedPipelineTemplates } from '@londi-agent-os/orchestrator';
 import { createServiceLifecycle, getWindowsServiceInstallPlan } from './service-lifecycle.js';
+import { createCredentialManagerTokenProvider } from './auth.js';
 
 export const LOCAL_API_PACKAGE = '@londi-agent-os/local-api';
 
 export function getHealthModel() {
-  const service = createServiceLifecycle();
+  const service = createServiceLifecycle({ security: { tokenProvider: createCredentialManagerTokenProvider('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_') } });
   return { packageName: LOCAL_API_PACKAGE, ...service.getHealth(), templates: listSupportedPipelineTemplates() };
 }
 
-export { createServiceLifecycle, getWindowsServiceInstallPlan };
+export { createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider };
 
 if (process.argv.includes('--build-check')) console.log(`${LOCAL_API_PACKAGE} build OK`);
 
 if (process.argv.includes('--service')) {
-  const service = createServiceLifecycle();
+  const configuredToken = process.env.LONDI_AGENT_OS_LOCAL_API_TOKEN;
+  const service = createServiceLifecycle({
+    security: { tokenProvider: createCredentialManagerTokenProvider(configuredToken ?? '') }
+  });
   const shutdown = async (signal) => {
     await service.stop(signal);
     process.exit(0);

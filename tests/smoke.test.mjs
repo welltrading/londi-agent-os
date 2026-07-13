@@ -9,7 +9,7 @@ import {
   loadDefaultLocalConfig,
   validateLocalConfig
 } from '../packages/contracts/src/index.js';
-import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan } from '../apps/local-api/src/index.js';
+import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider } from '../apps/local-api/src/index.js';
 import { getUiBootstrapModel } from '../apps/ui/src/index.js';
 import { ensureApprovedDataDirectories } from '../packages/orchestrator/src/index.js';
 
@@ -77,6 +77,7 @@ assert.deepEqual(createdDirectories, [
 ]);
 rmSync(tempDataRoot, { recursive: true, force: true });
 
+const TEST_TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_';
 const serviceConfig = {
   ...config,
   dataRoot: './.tmp-service-data',
@@ -89,12 +90,28 @@ const serviceConfig = {
   },
   ports: { ...config.ports, localApi: 3212 }
 };
-const service = createServiceLifecycle({ config: serviceConfig });
+const service = createServiceLifecycle({
+  config: serviceConfig,
+  security: { tokenProvider: createCredentialManagerTokenProvider(TEST_TOKEN) }
+});
 assert.equal(service.getHealth().status, 'stopped');
 const startedHealth = await service.start();
 assert.equal(startedHealth.status, 'running');
 assert.equal(startedHealth.host, '127.0.0.1');
 assert.equal(startedHealth.startupDeadlineMs, 30000);
+assert.equal(startedHealth.security.allowedOrigin, 'http://127.0.0.1:3211');
+assert.equal(startedHealth.security.credentialSource, 'windows-credential-manager');
+assert.equal(startedHealth.security.tokenBytes, 32);
+const healthResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { authorization: `Bearer ${TEST_TOKEN}`, origin: 'http://127.0.0.1:3211' } });
+assert.equal(healthResponse.status, 200);
+const healthText = await healthResponse.text();
+assert.equal(healthText.includes(TEST_TOKEN), false);
+const missingTokenResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { origin: 'http://127.0.0.1:3211' } });
+assert.equal(missingTokenResponse.status, 401);
+const wrongOriginResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { authorization: `Bearer ${TEST_TOKEN}`, origin: 'http://evil.example' } });
+assert.equal(wrongOriginResponse.status, 403);
+const queryTokenResponse = await fetch(`http://127.0.0.1:3212/system/health?token=${TEST_TOKEN}`, { headers: { authorization: `Bearer ${TEST_TOKEN}`, origin: 'http://127.0.0.1:3211' } });
+assert.equal(queryTokenResponse.status, 400);
 assert.equal((await service.stop('test-complete')).status, 'stopped');
 rmSync('./.tmp-service-data', { recursive: true, force: true });
 

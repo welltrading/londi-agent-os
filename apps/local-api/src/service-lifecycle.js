@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createLocalApiSecurity, writeJson } from './auth.js';
 import { loadDefaultLocalConfig, validateLocalConfig } from '@londi-agent-os/contracts';
 import { ensureApprovedDataDirectories } from '@londi-agent-os/orchestrator';
 
@@ -8,6 +9,7 @@ export const SERVICE_START_DEADLINE_MS = 30_000;
 export function createServiceLifecycle(options = {}) {
   const config = options.config ?? loadDefaultLocalConfig();
   validateLocalConfig(config);
+  const security = createLocalApiSecurity(options.security);
 
   let server;
   const startedAt = Date.now();
@@ -28,13 +30,12 @@ export function createServiceLifecycle(options = {}) {
     state.dataDirectories = ensureApprovedDataDirectories(config);
 
     server = createServer((request, response) => {
+      if (!security.enforce(request, response)) return;
       if (request.url === '/system/health') {
-        response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(JSON.stringify(getHealth()));
+        writeJson(response, 200, getHealth());
         return;
       }
-      response.writeHead(404, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ error: 'not_found' }));
+      writeJson(response, 404, { error: 'not_found' });
     });
 
     await new Promise((resolve, reject) => {
@@ -76,7 +77,14 @@ export function createServiceLifecycle(options = {}) {
       startedAt: state.startedAt,
       stoppedAt: state.stoppedAt,
       shutdownReason: state.shutdownReason,
-      dataDirectories: [...state.dataDirectories]
+      dataDirectories: [...state.dataDirectories],
+      security: {
+        bind: state.host,
+        allowedOrigin: security.allowedOrigin,
+        requestLimitBytes: security.requestLimitBytes,
+        credentialSource: security.credential.source,
+        tokenBytes: security.credential.tokenBytes
+      }
     };
   }
 
