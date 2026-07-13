@@ -4,7 +4,7 @@ Local-first orchestration system for running approved agent pipelines over Git w
 
 ## Current implementation slice
 
-This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest**, **E0-T03 — local configuration/data paths**, **E0-T04 — Windows Service lifecycle skeleton**, **E0-T05 — Local API authentication baseline**, **E0-T06 — logging/requestId/redaction baseline**, **E0-T07 — SQLite bootstrap/migrations baseline** and **E0-T08 — CI/baseline checks** and **E1-T01 — domain model/SQLite entities** and **E1-T02 — Run/Step state machines** and **E1-T03 — command transaction pipeline** and **E1-T04 — idempotency/optimistic concurrency** and **E1-T05 — approval domain** and **E1-T06 — event store/audit append-only** and **E1-T07 — repository tests/crash consistency** and **E2-T01 — Git project validation/locking** and **E2-T02 — branch/worktree lifecycle** and **E2-T03 — service account isolation baseline** and **E2-T04 — process control baseline** and **E2-T05 — Git snapshot/diff baseline** and **E2-T06 — cleanup/retention guards** and **E2-T07 — workspace security suite** and **E3-T01 — Agent Adapter contract** and **E3-T02 — Capability Manifest registry** and **E3-T03 — Recommendation engine** and **E3-T04 — Claude Code Adapter**.
+This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest**, **E0-T03 — local configuration/data paths**, **E0-T04 — Windows Service lifecycle skeleton**, **E0-T05 — Local API authentication baseline**, **E0-T06 — logging/requestId/redaction baseline**, **E0-T07 — SQLite bootstrap/migrations baseline** and **E0-T08 — CI/baseline checks** and **E1-T01 — domain model/SQLite entities** and **E1-T02 — Run/Step state machines** and **E1-T03 — command transaction pipeline** and **E1-T04 — idempotency/optimistic concurrency** and **E1-T05 — approval domain** and **E1-T06 — event store/audit append-only** and **E1-T07 — repository tests/crash consistency** and **E2-T01 — Git project validation/locking** and **E2-T02 — branch/worktree lifecycle** and **E2-T03 — service account isolation baseline** and **E2-T04 — process control baseline** and **E2-T05 — Git snapshot/diff baseline** and **E2-T06 — cleanup/retention guards** and **E2-T07 — workspace security suite** and **E3-T01 — Agent Adapter contract** and **E3-T02 — Capability Manifest registry** and **E3-T03 — Recommendation engine** and **E3-T04 — Claude Code Adapter** and **E3-T05 — Codex Adapter**.
 
 Included packages:
 
@@ -35,5 +35,6 @@ Included packages:
 - `docs/capability-registry.md` — approved adapter registry, capabilities, compatibility and availability rules.
 - `docs/recommendation-engine.md` — adapter filtering, ranking, override and top-three explanation rules.
 - `docs/claude-code-adapter.md` — Claude Code CLI health/auth/version, process control and redaction behavior.
+- `docs/codex-adapter.md` — Codex CLI health/auth/version, process control and redaction behavior.
 
 Source of truth: `/a0/usr/workdir/specs/2026-07-13-londi-agent-os-execution-spec.md`.
