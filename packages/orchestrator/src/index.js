@@ -74,6 +74,22 @@ export {
   assertHandoffMarkdown
 } from './handoff.js';
 export {
+  REVIEW_ARTIFACT_FILENAME,
+  REVIEW_APPROVAL_GATE_ID,
+  REVIEW_APPROVAL_KIND,
+  REVIEW_SEVERITIES,
+  REVIEW_BLOCKING_SEVERITIES,
+  REVIEW_REQUIRED_SECTIONS,
+  ReviewArtifactError,
+  createReviewArtifact,
+  createCriticalReviewApprovalGate,
+  createCriticalReviewApprovalPayload,
+  decideCriticalReviewApprovalGate,
+  assertReviewArtifact,
+  assertReviewMarkdown,
+  getHighestReviewSeverity
+} from './review.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
