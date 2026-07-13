@@ -37,16 +37,24 @@ export {
 } from './idempotency.js';
 export {
   ApprovalError,
+  PipelineApprovalGateError,
   StaleApprovalError,
   ExpiredApprovalError,
   InvalidApprovalDecisionError,
   APPROVAL_STATES,
   APPROVAL_DECISIONS,
+  PIPELINE_APPROVAL_GATE_ID,
+  PIPELINE_APPROVAL_GATE_KIND,
   SENSITIVE_APPROVAL_TTL_MINUTES,
   createApprovalRequest,
+  createPipelineApprovalGate,
+  createPipelineApprovalPayload,
   decideApproval,
+  decidePipelineApprovalGate,
   assertApprovalUsable,
+  assertPipelineApprovalPayload,
   invalidateApprovalOnChange,
+  invalidatePipelineApprovalOnConfigChange,
   hashApprovalPayload,
   addMinutesIso
 } from './approvals.js';
