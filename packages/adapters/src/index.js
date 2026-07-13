@@ -367,3 +367,5 @@ function defaultRequirementWeight(category) {
   if (category === 'technical') return 50;
   return 20;
 }
+
+export { CLAUDE_CODE_ADAPTER_ID, DEFAULT_CLAUDE_CODE_COMMAND, createClaudeCodeAdapter, sanitizeAdapterText } from './claude-code.js';
