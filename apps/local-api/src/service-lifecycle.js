@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { createLocalApiSecurity, writeJson } from './auth.js';
+import { createLogger, createRequestId } from './logging.js';
 import { loadDefaultLocalConfig, validateLocalConfig } from '@londi-agent-os/contracts';
 import { ensureApprovedDataDirectories } from '@londi-agent-os/orchestrator';
 
@@ -10,6 +11,7 @@ export function createServiceLifecycle(options = {}) {
   const config = options.config ?? loadDefaultLocalConfig();
   validateLocalConfig(config);
   const security = createLocalApiSecurity(options.security);
+  const logger = options.logger ?? createLogger({ knownSecrets: options.knownSecrets ?? [] });
 
   let server;
   const startedAt = Date.now();
@@ -28,14 +30,16 @@ export function createServiceLifecycle(options = {}) {
     if (state.status === 'running') return getHealth();
     state.status = 'starting';
     state.dataDirectories = ensureApprovedDataDirectories(config);
+    logger.info('service.starting', { service: SERVICE_NAME, host: state.host, port: state.port });
 
     server = createServer((request, response) => {
       if (!security.enforce(request, response)) return;
       if (request.url === '/system/health') {
-        writeJson(response, 200, getHealth());
+        const requestId = response.getHeader('x-request-id')?.toString() || createRequestId();
+        writeJson(response, 200, { ...getHealth(), requestId });
         return;
       }
-      writeJson(response, 404, { error: 'not_found' });
+      writeJson(response, 404, { error: 'not_found', requestId: response.getHeader('x-request-id') });
     });
 
     await new Promise((resolve, reject) => {
@@ -44,6 +48,7 @@ export function createServiceLifecycle(options = {}) {
         server.off('error', reject);
         state.status = 'running';
         state.startedAt = new Date().toISOString();
+        logger.info('service.started', { service: SERVICE_NAME, host: state.host, port: state.port });
         resolve();
       });
     });
@@ -55,6 +60,7 @@ export function createServiceLifecycle(options = {}) {
     if (!server || state.status === 'stopped') return getHealth();
     state.status = 'stopping';
     state.shutdownReason = reason;
+    logger.info('service.stopping', { service: SERVICE_NAME, reason });
 
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -63,6 +69,7 @@ export function createServiceLifecycle(options = {}) {
     server = undefined;
     state.status = 'stopped';
     state.stoppedAt = new Date().toISOString();
+    logger.info('service.stopped', { service: SERVICE_NAME, reason });
     return getHealth();
   }
 
@@ -78,6 +85,11 @@ export function createServiceLifecycle(options = {}) {
       stoppedAt: state.stoppedAt,
       shutdownReason: state.shutdownReason,
       dataDirectories: [...state.dataDirectories],
+      logging: {
+        structured: true,
+        requestId: true,
+        redaction: true
+      },
       security: {
         bind: state.host,
         allowedOrigin: security.allowedOrigin,

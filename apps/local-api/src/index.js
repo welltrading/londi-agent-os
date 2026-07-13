@@ -1,6 +1,7 @@
 import { listSupportedPipelineTemplates } from '@londi-agent-os/orchestrator';
 import { createServiceLifecycle, getWindowsServiceInstallPlan } from './service-lifecycle.js';
 import { createCredentialManagerTokenProvider } from './auth.js';
+import { createLogger, createRequestId, sanitizeForLog } from './logging.js';
 
 export const LOCAL_API_PACKAGE = '@londi-agent-os/local-api';
 
@@ -9,7 +10,7 @@ export function getHealthModel() {
   return { packageName: LOCAL_API_PACKAGE, ...service.getHealth(), templates: listSupportedPipelineTemplates() };
 }
 
-export { createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider };
+export { createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, createRequestId, sanitizeForLog };
 
 if (process.argv.includes('--build-check')) console.log(`${LOCAL_API_PACKAGE} build OK`);
 
@@ -25,9 +26,9 @@ if (process.argv.includes('--service')) {
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
   service.start().then((health) => {
-    console.log(JSON.stringify({ event: 'service.started', health }));
+    console.log(sanitizeForLog({ event: 'service.started', health }, [configuredToken]));
   }).catch((error) => {
-    console.error(JSON.stringify({ event: 'service.start_failed', error: error.message }));
+    console.error(sanitizeForLog({ event: 'service.start_failed', error: error.message }, [configuredToken]));
     process.exit(1);
   });
 }

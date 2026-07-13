@@ -9,7 +9,7 @@ import {
   loadDefaultLocalConfig,
   validateLocalConfig
 } from '../packages/contracts/src/index.js';
-import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider } from '../apps/local-api/src/index.js';
+import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, sanitizeForLog } from '../apps/local-api/src/index.js';
 import { getUiBootstrapModel } from '../apps/ui/src/index.js';
 import { ensureApprovedDataDirectories } from '../packages/orchestrator/src/index.js';
 
@@ -90,9 +90,13 @@ const serviceConfig = {
   },
   ports: { ...config.ports, localApi: 3212 }
 };
+const logSink = [];
+const logger = createLogger({ sink: logSink, knownSecrets: [TEST_TOKEN, 'plain-password-value'] });
 const service = createServiceLifecycle({
   config: serviceConfig,
-  security: { tokenProvider: createCredentialManagerTokenProvider(TEST_TOKEN) }
+  security: { tokenProvider: createCredentialManagerTokenProvider(TEST_TOKEN) },
+  logger,
+  knownSecrets: [TEST_TOKEN]
 });
 assert.equal(service.getHealth().status, 'stopped');
 const startedHealth = await service.start();
@@ -104,6 +108,7 @@ assert.equal(startedHealth.security.credentialSource, 'windows-credential-manage
 assert.equal(startedHealth.security.tokenBytes, 32);
 const healthResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { authorization: `Bearer ${TEST_TOKEN}`, origin: 'http://127.0.0.1:3211' } });
 assert.equal(healthResponse.status, 200);
+assert.match(healthResponse.headers.get('x-request-id'), /^req_/);
 const healthText = await healthResponse.text();
 assert.equal(healthText.includes(TEST_TOKEN), false);
 const missingTokenResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { origin: 'http://127.0.0.1:3211' } });
@@ -120,5 +125,18 @@ assert.equal(servicePlan.serviceName, 'LondiAgentOSLocalApi');
 assert.equal(servicePlan.startupType, 'automatic');
 assert.equal(servicePlan.healthEndpoint, 'http://127.0.0.1:3210/system/health');
 assert.equal(servicePlan.startupDeadlineMs, 30000);
+
+const injectedLog = logger.security('security.test\nforged-line', {
+  authorization: `Bearer ${TEST_TOKEN}`,
+  password: 'plain-password-value',
+  message: 'hello\r\nworld'
+}, { requestId: 'req_test' });
+const serializedLogs = JSON.stringify(logSink);
+assert.equal(serializedLogs.includes(TEST_TOKEN), false);
+assert.equal(serializedLogs.includes('plain-password-value'), false);
+assert.equal(serializedLogs.includes('\nforged-line'), false);
+assert.equal(injectedLog.severity, 'security');
+assert.equal(injectedLog.requestId, 'req_test');
+assert.equal(sanitizeForLog(`token=${TEST_TOKEN}`, [TEST_TOKEN]), 'token=[REDACTED]');
 
 console.log('Smoke tests OK');

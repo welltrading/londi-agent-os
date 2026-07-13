@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { createRequestId } from './logging.js';
 
 export const LOCAL_API_AUTH_SCHEME = 'Bearer';
 export const LOCAL_API_TOKEN_BYTES = 32;
@@ -62,8 +63,10 @@ export function createLocalApiSecurity(options = {}) {
   }
 
   function enforce(request, response) {
+    const requestId = request.headers['x-request-id']?.toString() || createRequestId();
+    response.setHeader('x-request-id', requestId);
     if (request.url?.includes('access_token=') || request.url?.includes('token=')) {
-      writeJson(response, 400, { error: 'token_in_query_forbidden' });
+      writeJson(response, 400, { error: 'token_in_query_forbidden', requestId });
       return false;
     }
 
@@ -77,19 +80,19 @@ export function createLocalApiSecurity(options = {}) {
     const lengthHeader = request.headers['content-length'];
     const contentLength = Number.parseInt(Array.isArray(lengthHeader) ? lengthHeader[0] : lengthHeader ?? '0', 10);
     if (Number.isFinite(contentLength) && contentLength > requestLimitBytes) {
-      writeJson(response, 413, { error: 'request_too_large' });
+      writeJson(response, 413, { error: 'request_too_large', requestId });
       return false;
     }
 
     const authorization = request.headers.authorization ?? '';
     if (!authorization.startsWith(`${LOCAL_API_AUTH_SCHEME} `)) {
-      writeJson(response, 401, { error: 'missing_bearer_token' });
+      writeJson(response, 401, { error: 'missing_bearer_token', requestId });
       return false;
     }
 
     const presented = authorization.slice(`${LOCAL_API_AUTH_SCHEME} `.length);
     if (!safeEqual(presented, tokenProvider.getToken())) {
-      writeJson(response, 401, { error: 'invalid_bearer_token' });
+      writeJson(response, 401, { error: 'invalid_bearer_token', requestId });
       return false;
     }
 
