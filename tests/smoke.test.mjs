@@ -16,6 +16,12 @@ import {
   STEP_STATES,
   StateTransitionError,
   ArtifactMismatchError,
+  IdempotencyConflictError,
+  IdempotencyReplayError,
+  StaleRevisionError,
+  assertFreshRevision,
+  createInMemoryIdempotencyStore,
+  withIdempotency,
   executeCommandPipeline,
   sha256,
   applyRunTransition,
@@ -126,6 +132,47 @@ assert.throws(
   ArtifactMismatchError
 );
 assert.equal(mismatchRecorded, true);
+const idempotencyStore = createInMemoryIdempotencyStore();
+let sideEffects = 0;
+const firstIdempotent = withIdempotency({
+  key: 'idem-1',
+  fingerprint: 'run:run-1:start',
+  store: idempotencyStore,
+  execute: () => {
+    sideEffects += 1;
+    return { state: 'Running', revision: 2 };
+  }
+});
+const replayedIdempotent = withIdempotency({
+  key: 'idem-1',
+  fingerprint: 'run:run-1:start',
+  store: idempotencyStore,
+  execute: () => {
+    sideEffects += 1;
+    return { state: 'ShouldNotHappen' };
+  }
+});
+assert.equal(firstIdempotent.replayed, false);
+assert.equal(replayedIdempotent.replayed, true);
+assert.equal(sideEffects, 1);
+assert.deepEqual(replayedIdempotent.result, { state: 'Running', revision: 2 });
+assert.throws(
+  () => withIdempotency({ key: 'idem-1', fingerprint: 'different', store: idempotencyStore, execute: () => ({}) }),
+  IdempotencyConflictError
+);
+withIdempotency({ key: 'idem-unknown', fingerprint: 'external-call', externalEffectState: 'Unknown', store: idempotencyStore, execute: () => ({ externalEffectState: 'Unknown' }) });
+assert.throws(
+  () => withIdempotency({ key: 'idem-unknown', fingerprint: 'external-call', store: idempotencyStore, execute: () => ({}) }),
+  IdempotencyReplayError
+);
+assert.equal(assertFreshRevision({ aggregateId: 'run-1', expectedRevision: 2, actualRevision: 2 }), true);
+assert.throws(
+  () => assertFreshRevision({ aggregateId: 'run-1', expectedRevision: 1, actualRevision: 2 }),
+  (error) => error instanceof StaleRevisionError
+    && error.code === 'ERR_STALE_REVISION'
+    && error.details.expectedRevision === 1
+    && error.details.actualRevision === 2
+);
 rmSync('./.tmp-test-data', { recursive: true, force: true });
 assert.equal(getHealthModel().packageName, '@londi-agent-os/local-api');
 assert.equal(getHealthModel().service, 'LondiAgentOSLocalApi');

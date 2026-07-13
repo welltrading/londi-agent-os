@@ -26,4 +26,13 @@ export {
   createSqliteCommandTransaction,
   sha256
 } from './command-pipeline.js';
+export {
+  IdempotencyReplayError,
+  StaleRevisionError,
+  IdempotencyConflictError,
+  createInMemoryIdempotencyStore,
+  createSqliteIdempotencyStore,
+  assertFreshRevision,
+  withIdempotency
+} from './idempotency.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);
