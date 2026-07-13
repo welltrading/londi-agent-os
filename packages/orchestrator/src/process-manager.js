@@ -147,3 +147,140 @@ function waitForExit(child, timeoutMs, onTimeout) {
     });
   });
 }
+
+export const ATTEMPT_SUPERVISION_DEFAULTS = Object.freeze({
+  heartbeatIntervalMs: 30_000,
+  unresponsiveAfterMs: 120_000,
+  failureAfterMs: 300_000,
+  timeoutAfterMs: 30 * 60_000
+});
+
+export const ATTEMPT_SUPERVISION_STATES = Object.freeze([
+  'Running',
+  'Heartbeat Due',
+  'Unresponsive',
+  'Failed',
+  'Timeout Decision Required'
+]);
+
+export class AttemptSupervisionError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'AttemptSupervisionError';
+    this.code = 'ERR_ATTEMPT_SUPERVISION';
+    this.details = details;
+  }
+}
+
+export function createAttemptSupervisor({
+  nowMs = () => Date.now(),
+  heartbeatIntervalMs = ATTEMPT_SUPERVISION_DEFAULTS.heartbeatIntervalMs,
+  unresponsiveAfterMs = ATTEMPT_SUPERVISION_DEFAULTS.unresponsiveAfterMs,
+  failureAfterMs = ATTEMPT_SUPERVISION_DEFAULTS.failureAfterMs,
+  timeoutAfterMs = ATTEMPT_SUPERVISION_DEFAULTS.timeoutAfterMs
+} = {}) {
+  validateSupervisionThresholds({ heartbeatIntervalMs, unresponsiveAfterMs, failureAfterMs, timeoutAfterMs });
+  const attempts = new Map();
+  const events = [];
+
+  function currentMs() {
+    const value = Number(nowMs());
+    if (!Number.isFinite(value)) throw new AttemptSupervisionError('Supervisor clock must return a finite millisecond timestamp.');
+    return value;
+  }
+
+  function record(event) {
+    const entry = Object.freeze({ observedAtMs: currentMs(), ...event });
+    events.push(entry);
+    return entry;
+  }
+
+  function getAttempt(attemptId) {
+    const attempt = attempts.get(attemptId);
+    if (!attempt) throw new AttemptSupervisionError('Unknown supervised attempt.', { attemptId });
+    return attempt;
+  }
+
+  function classify(attempt, observedAtMs = currentMs()) {
+    const elapsedMs = Math.max(0, observedAtMs - attempt.startedAtMs);
+    const silenceMs = Math.max(0, observedAtMs - attempt.lastHeartbeatAtMs);
+
+    if (elapsedMs >= timeoutAfterMs && silenceMs < unresponsiveAfterMs) {
+      return {
+        state: 'Timeout Decision Required',
+        action: 'request-timeout-decision',
+        reason: 'attempt-timeout-with-recent-heartbeat'
+      };
+    }
+    if (silenceMs >= failureAfterMs) {
+      return { state: 'Failed', action: 'mark-failed', reason: 'heartbeat-missing-300s' };
+    }
+    if (silenceMs >= unresponsiveAfterMs) {
+      return { state: 'Unresponsive', action: 'mark-unresponsive', reason: 'heartbeat-missing-120s' };
+    }
+    if (silenceMs >= heartbeatIntervalMs) {
+      return { state: 'Heartbeat Due', action: 'request-heartbeat', reason: 'heartbeat-due-30s' };
+    }
+    return { state: 'Running', action: 'none', reason: 'heartbeat-fresh' };
+  }
+
+  function snapshot(attempt, observedAtMs = currentMs()) {
+    const classification = classify(attempt, observedAtMs);
+    return Object.freeze({
+      attemptId: attempt.attemptId,
+      startedAtMs: attempt.startedAtMs,
+      lastHeartbeatAtMs: attempt.lastHeartbeatAtMs,
+      observedAtMs,
+      elapsedMs: Math.max(0, observedAtMs - attempt.startedAtMs),
+      silenceMs: Math.max(0, observedAtMs - attempt.lastHeartbeatAtMs),
+      ...classification
+    });
+  }
+
+  return Object.freeze({
+    registerAttempt({ attemptId, startedAtMs = currentMs(), initialHeartbeatAtMs = startedAtMs } = {}) {
+      if (!attemptId) throw new AttemptSupervisionError('Attempt id is required for supervision.');
+      if (attempts.has(attemptId)) throw new AttemptSupervisionError('Attempt is already supervised.', { attemptId });
+      const attempt = { attemptId, startedAtMs: Number(startedAtMs), lastHeartbeatAtMs: Number(initialHeartbeatAtMs) };
+      if (!Number.isFinite(attempt.startedAtMs) || !Number.isFinite(attempt.lastHeartbeatAtMs)) throw new AttemptSupervisionError('Attempt timestamps must be finite milliseconds.', { attemptId });
+      attempts.set(attemptId, attempt);
+      record({ type: 'attempt.supervision.registered', attemptId });
+      return snapshot(attempt);
+    },
+
+    recordHeartbeat({ attemptId, heartbeatAtMs = currentMs() } = {}) {
+      const attempt = getAttempt(attemptId);
+      const heartbeatTime = Number(heartbeatAtMs);
+      if (!Number.isFinite(heartbeatTime)) throw new AttemptSupervisionError('Heartbeat timestamp must be a finite millisecond value.', { attemptId });
+      if (heartbeatTime < attempt.lastHeartbeatAtMs) throw new AttemptSupervisionError('Heartbeat cannot move backwards.', { attemptId, heartbeatAtMs });
+      attempt.lastHeartbeatAtMs = heartbeatTime;
+      record({ type: 'attempt.heartbeat.received', attemptId, heartbeatAtMs: heartbeatTime });
+      return snapshot(attempt, heartbeatTime);
+    },
+
+    evaluateAttempt({ attemptId, observedAtMs = currentMs() } = {}) {
+      const attempt = getAttempt(attemptId);
+      const result = snapshot(attempt, Number(observedAtMs));
+      record({ type: 'attempt.supervision.evaluated', attemptId, state: result.state, action: result.action, reason: result.reason });
+      return result;
+    },
+
+    listAttempts() {
+      return [...attempts.values()].map((attempt) => snapshot(attempt));
+    },
+
+    getEvents() {
+      return [...events];
+    }
+  });
+}
+
+function validateSupervisionThresholds({ heartbeatIntervalMs, unresponsiveAfterMs, failureAfterMs, timeoutAfterMs }) {
+  const values = { heartbeatIntervalMs, unresponsiveAfterMs, failureAfterMs, timeoutAfterMs };
+  for (const [name, value] of Object.entries(values)) {
+    if (!Number.isFinite(Number(value)) || Number(value) <= 0) throw new AttemptSupervisionError('Supervision thresholds must be positive millisecond values.', { name, value });
+  }
+  if (!(heartbeatIntervalMs < unresponsiveAfterMs && unresponsiveAfterMs < failureAfterMs && failureAfterMs < timeoutAfterMs)) {
+    throw new AttemptSupervisionError('Supervision thresholds must be ordered: heartbeat < unresponsive < failure < timeout.', values);
+  }
+}

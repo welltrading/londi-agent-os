@@ -84,6 +84,10 @@ if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE}
 
 export {
   ProcessControlError,
+  AttemptSupervisionError,
+  ATTEMPT_SUPERVISION_DEFAULTS,
+  ATTEMPT_SUPERVISION_STATES,
   createAttemptProcessManager,
+  createAttemptSupervisor,
   deriveJobObjectName
 } from './process-manager.js';
