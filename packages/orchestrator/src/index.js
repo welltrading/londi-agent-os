@@ -59,6 +59,21 @@ export {
   addMinutesIso
 } from './approvals.js';
 export {
+  HANDOFF_APPROVAL_GATE_ID,
+  HANDOFF_APPROVAL_KIND,
+  HANDOFF_ARTIFACT_FILENAME,
+  HANDOFF_REQUIRED_SECTIONS,
+  HandoffError,
+  createHandoffRevision,
+  createHandoffApprovalGate,
+  createHandoffApprovalPayload,
+  decideHandoffApprovalGate,
+  markHandoffRevisionApproved,
+  assertBuildReceivesApprovedHandoff,
+  assertHandoffRevision,
+  assertHandoffMarkdown
+} from './handoff.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
