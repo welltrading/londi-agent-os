@@ -1,0 +1,14 @@
+{
+  "name": "@londi-agent-os/migrations",
+  "version": "0.0.0-mvp",
+  "private": true,
+  "description": "SQLite migrations package boundary.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node src/index.js --build-check"
+  },
+  "dependencies": {
+    "@londi-agent-os/contracts": "0.0.0-mvp"
+  }
+}

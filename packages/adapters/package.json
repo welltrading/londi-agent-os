@@ -1,0 +1,14 @@
+{
+  "name": "@londi-agent-os/adapters",
+  "version": "0.0.0-mvp",
+  "private": true,
+  "description": "Adapter boundary package; active adapters are deferred to E3.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node src/index.js --build-check"
+  },
+  "scripts": {
+    "build": "node ./verify-no-active-adapters.mjs"
+  }
+}

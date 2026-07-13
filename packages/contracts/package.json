@@ -1,0 +1,11 @@
+{
+  "name": "@londi-agent-os/contracts",
+  "version": "0.0.0-mvp",
+  "private": true,
+  "description": "Shared contracts package.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node src/index.js --build-check"
+  }
+}

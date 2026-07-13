@@ -1,0 +1,20 @@
+{
+  "name": "londi-agent-os",
+  "version": "0.0.0-mvp",
+  "private": true,
+  "description": "Local Windows-first orchestration shell for Londi Agent OS MVP.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present && node scripts/check-package-graph.mjs",
+    "test": "node tests/smoke.test.mjs",
+    "check:graph": "node scripts/check-package-graph.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=9.0.0"
+  }
+}
