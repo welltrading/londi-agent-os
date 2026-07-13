@@ -8,6 +8,17 @@ export {
   loadCompatibilityManifest
 } from './compatibility.js';
 export {
+  PIPELINE_TEMPLATE_IDS,
+  PIPELINE_TEMPLATE_SCHEMA_VERSION,
+  PIPELINE_TEMPLATES,
+  PipelineTemplateError,
+  createPipelineAssignment,
+  getPipelineTemplate,
+  listPipelineTemplates,
+  validatePipelineTemplate,
+  validatePipelineTemplates
+} from './pipeline-templates.js';
+export {
   DEFAULT_LOCAL_CONFIG,
   LOCAL_CONFIG_SCHEMA_VERSION,
   LocalConfigValidationError,
