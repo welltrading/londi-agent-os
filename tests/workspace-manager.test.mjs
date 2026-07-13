@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -7,6 +7,9 @@ import {
   WorkspaceLockConflictError,
   classifyWorkspaceValidationError,
   createInMemoryWorkspaceLockStore,
+  createRunWorkspace,
+  deriveRunBranchName,
+  deriveRunWorktreePath,
   validateGitProject
 } from '../packages/orchestrator/src/index.js';
 
@@ -47,6 +50,22 @@ try {
   assert.equal(blockedDirty.status, 'Blocked');
 
   assert.equal(validateGitProject({ repositoryPath: repo, targetBranch: 'missing', runId: 'run-5' }).status, 'Blocked');
+
+  git(repo, ['add', 'dirty.txt']);
+  git(repo, ['commit', '-m', 'dirty committed']);
+  const lifecycleLockStore = createInMemoryWorkspaceLockStore();
+  const manifest = createRunWorkspace({ repositoryPath: repo, targetBranch: 'main', runId: 'abcdef1234567890', dataRoot: join(root, 'data'), lockStore: lifecycleLockStore });
+  assert.equal(manifest.branchName, 'londi/run-abcdef123456');
+  assert.equal(manifest.worktreePath, deriveRunWorktreePath({ dataRoot: join(root, 'data'), runId: 'abcdef1234567890' }));
+  assert.equal(deriveRunBranchName('ABCDEF_1234567890'), 'londi/run-abcdef-12345');
+  assert.equal(existsSync(manifest.worktreePath), true);
+  assert.equal(JSON.parse(readFileSync(join(manifest.worktreePath, 'londi-workspace-manifest.json'), 'utf8')).baseCommit, manifest.baseCommit);
+  assert.equal(JSON.parse(readFileSync(join(manifest.worktreePath, 'londi-workspace-manifest.json'), 'utf8')).targetBranch, 'main');
+  assert.throws(
+    () => createRunWorkspace({ repositoryPath: repo, targetBranch: 'main', runId: 'abcdef1234567890', dataRoot: join(root, 'data') }),
+    /already exists|already registered/
+  );
+
   console.log('Workspace manager tests OK');
 } finally {
   rmSync(root, { recursive: true, force: true });

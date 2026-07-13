@@ -4,7 +4,7 @@ Local-first orchestration system for running approved agent pipelines over Git w
 
 ## Current implementation slice
 
-This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest**, **E0-T03 — local configuration/data paths**, **E0-T04 — Windows Service lifecycle skeleton**, **E0-T05 — Local API authentication baseline**, **E0-T06 — logging/requestId/redaction baseline**, **E0-T07 — SQLite bootstrap/migrations baseline** and **E0-T08 — CI/baseline checks** and **E1-T01 — domain model/SQLite entities** and **E1-T02 — Run/Step state machines** and **E1-T03 — command transaction pipeline** and **E1-T04 — idempotency/optimistic concurrency** and **E1-T05 — approval domain** and **E1-T06 — event store/audit append-only** and **E1-T07 — repository tests/crash consistency** and **E2-T01 — Git project validation/locking**.
+This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest**, **E0-T03 — local configuration/data paths**, **E0-T04 — Windows Service lifecycle skeleton**, **E0-T05 — Local API authentication baseline**, **E0-T06 — logging/requestId/redaction baseline**, **E0-T07 — SQLite bootstrap/migrations baseline** and **E0-T08 — CI/baseline checks** and **E1-T01 — domain model/SQLite entities** and **E1-T02 — Run/Step state machines** and **E1-T03 — command transaction pipeline** and **E1-T04 — idempotency/optimistic concurrency** and **E1-T05 — approval domain** and **E1-T06 — event store/audit append-only** and **E1-T07 — repository tests/crash consistency** and **E2-T01 — Git project validation/locking** and **E2-T02 — branch/worktree lifecycle**.
 
 Included packages:
 
@@ -29,6 +29,6 @@ Included packages:
 - `docs/approvals.md` — approval requests, decisions, stale checks and expiry rules.
 - `docs/event-store-audit.md` — monotonic events and append-only Audit baseline.
 - `docs/repository-crash-consistency.md` — transaction rollback, locks, fault injection and state-machine coverage checks.
-- `docs/git-project-validation-locking.md` — Git-only project validation, dirty-state handling and target-branch locks.
+- `docs/git-project-validation-locking.md` — Git-only project validation, dirty-state handling, target-branch locks and branch/worktree lifecycle.
 
 Source of truth: `/a0/usr/workdir/specs/2026-07-13-londi-agent-os-execution-spec.md`.

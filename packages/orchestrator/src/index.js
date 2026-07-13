@@ -61,6 +61,10 @@ export {
 export {
   WorkspaceValidationError,
   WorkspaceLockConflictError,
+  WorkspaceLifecycleError,
+  deriveRunBranchName,
+  deriveRunWorktreePath,
+  createRunWorkspace,
   validateGitProject,
   createInMemoryWorkspaceLockStore,
   classifyWorkspaceValidationError
