@@ -7,5 +7,12 @@ export {
   assertSupportedCompatibilityManifest,
   loadCompatibilityManifest
 } from './compatibility.js';
+export {
+  DEFAULT_LOCAL_CONFIG,
+  LOCAL_CONFIG_SCHEMA_VERSION,
+  LocalConfigValidationError,
+  loadDefaultLocalConfig,
+  validateLocalConfig
+} from './configuration.js';
 
 if (process.argv.includes('--build-check')) console.log(`${CONTRACTS_PACKAGE} build OK`);

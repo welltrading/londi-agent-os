@@ -4,7 +4,7 @@ Local-first orchestration system for running approved agent pipelines over Git w
 
 ## Current implementation slice
 
-This repository currently covers **E0-T01 — repository/package structure** and **E0-T02 — compatibility manifest**.
+This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest** and **E0-T03 — local configuration/data paths**.
 
 Included packages:
 
@@ -16,5 +16,6 @@ Included packages:
 - `packages/adapters` — adapter package boundary only; no active adapters are implemented in E0-T01.
 - `tests` — smoke checks for the foundation.
 - `docs/compatibility.md` — supported OS/runtime/CLI/schema baseline.
+- `docs/configuration.md` — local config, data paths, ports and retention baseline.
 
 Source of truth: `/a0/usr/workdir/specs/2026-07-13-londi-agent-os-execution-spec.md`.

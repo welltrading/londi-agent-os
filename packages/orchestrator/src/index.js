@@ -3,4 +3,5 @@ export const ORCHESTRATOR_PACKAGE = '@londi-agent-os/orchestrator';
 export function listSupportedPipelineTemplates() {
   return [...MVP_PIPELINE_TEMPLATES];
 }
+export { ensureApprovedDataDirectories } from './configuration.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);
