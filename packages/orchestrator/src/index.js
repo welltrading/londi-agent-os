@@ -4,4 +4,18 @@ export function listSupportedPipelineTemplates() {
   return [...MVP_PIPELINE_TEMPLATES];
 }
 export { ensureApprovedDataDirectories } from './configuration.js';
+export {
+  RUN_STATES,
+  STEP_STATES,
+  FINAL_RUN_STATES,
+  RETENTION_STARTING_RUN_STATES,
+  StateTransitionError,
+  applyRunTransition,
+  applyStepTransition,
+  assertRunTransition,
+  assertStepTransition,
+  isRunFinal,
+  isOpenRunState,
+  startsRetention
+} from './state-machine.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);

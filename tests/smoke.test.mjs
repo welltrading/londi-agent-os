@@ -11,11 +11,59 @@ import {
 } from '../packages/contracts/src/index.js';
 import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, sanitizeForLog } from '../apps/local-api/src/index.js';
 import { getUiBootstrapModel } from '../apps/ui/src/index.js';
-import { ensureApprovedDataDirectories } from '../packages/orchestrator/src/index.js';
+import {
+  RUN_STATES,
+  STEP_STATES,
+  StateTransitionError,
+  applyRunTransition,
+  applyStepTransition,
+  assertRunTransition,
+  isRunFinal,
+  startsRetention,
+  ensureApprovedDataDirectories
+} from '../packages/orchestrator/src/index.js';
 import { DatabaseSync } from 'node:sqlite';
 import { CURRENT_SCHEMA_VERSION, MigrationError, getSchemaVersion, runMigrations, withTransaction } from '../packages/migrations/src/index.js';
 
 assert.deepEqual(MVP_PIPELINE_TEMPLATES, ['direct', 'plan-build', 'plan-build-review']);
+assert.equal(RUN_STATES.includes('Accepted'), true);
+assert.equal(STEP_STATES.includes('Retrying'), true);
+assert.equal(applyRunTransition('Draft', 'Start Preflight', { requiredFieldsComplete: true, projectPathExists: true }).to, 'Preflight Running');
+assert.throws(
+  () => applyRunTransition('Draft', 'Start Preflight', { requiredFieldsComplete: true, projectPathExists: false }),
+  (error) => error instanceof StateTransitionError
+    && error.code === 'ERR_INVALID_STATE_TRANSITION'
+    && error.details.state === 'Draft'
+);
+assert.equal(assertRunTransition('Preflight Running', 'Checks passed', { preflightStatus: 'Ready with Warnings' }), 'Ready');
+assert.equal(assertRunTransition('Ready', 'Present pipeline', { recommendationComplete: true, contextComplete: true, manifestComplete: true }), 'Awaiting Pipeline Approval');
+assert.equal(assertRunTransition('Awaiting Pipeline Approval', 'Approve', { approvalMatchesRevision: true, warningsApproved: true }), 'Preparing Workspace');
+assert.equal(assertRunTransition('Preparing Workspace', 'Worktree ready', { gitReady: true, aclReady: true, lockAcquired: true, baseCommitValid: true }), 'Running');
+assert.equal(assertRunTransition('Running', 'Sensitive action requested', { validGrant: false }), 'Awaiting Approval');
+assert.equal(assertRunTransition('Awaiting Approval', 'Reject essential', { actionEssential: true }), 'Needs Attention');
+assert.equal(assertRunTransition('Awaiting Approval', 'Reject optional', { actionEssential: false }), 'Running');
+assert.equal(assertRunTransition('Running', 'Heartbeat missing 120s', { activeAttempt: true }), 'Unresponsive');
+assert.equal(assertRunTransition('Unresponsive', 'Crash/restart', { attemptUncertain: true }), 'Recovery Required');
+assert.equal(assertRunTransition('Recovery Required', 'Resume approved', { checkpointValid: true, externalEffectsVerified: true }), 'Running');
+assert.equal(assertRunTransition('Running', 'Pipeline success', { pipelineSuccessCriteriaMet: true }), 'Awaiting Acceptance');
+assert.equal(assertRunTransition('Awaiting Acceptance', 'Accept', { diffPresented: true, testsPresented: true, reviewPresented: true }), 'Accepted');
+assert.equal(isRunFinal('Accepted'), false);
+assert.equal(startsRetention('Accepted'), false);
+assert.equal(startsRetention('Completed'), true);
+assert.throws(
+  () => assertRunTransition('Accepted', 'Verify merge success', { targetContainsChange: true, noConflict: true }),
+  StateTransitionError
+);
+assert.equal(assertRunTransition('Accepted', 'Verify merge success', { targetContainsChange: true, noConflict: true, acceptedAt: '2026-01-01T00:00:00Z', mergeVerifiedAt: '2026-01-01T00:01:00Z', targetCommit: 'abc123' }), 'Completed');
+assert.equal(assertRunTransition('Running', 'Controlled Stop', { transactionOpen: false }), 'Cancelled');
+assert.equal(assertRunTransition('Running', 'Service shutdown', { checkpointSaved: true, childProcessesClosed: true }), 'Recovery Required');
+assert.equal(applyStepTransition('Pending', 'Prepare', { dependenciesReady: true }).to, 'Ready');
+assert.equal(applyStepTransition('Ready', 'Start', { assignedAdapterReady: true }).to, 'Running');
+assert.equal(applyStepTransition('Running', 'Succeeded', { exitOk: true, acceptanceChecksPassed: true }).to, 'Succeeded');
+assert.throws(
+  () => applyStepTransition('Ready', 'Start', { assignedAdapterReady: false }),
+  StateTransitionError
+);
 assert.equal(getHealthModel().packageName, '@londi-agent-os/local-api');
 assert.equal(getHealthModel().service, 'LondiAgentOSLocalApi');
 assert.equal(getUiBootstrapModel().packageName, '@londi-agent-os/ui');
