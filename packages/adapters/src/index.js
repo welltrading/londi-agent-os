@@ -249,3 +249,121 @@ function parseSemver(version) {
 function compareSemver(left, right) {
   return left.major - right.major || left.minor - right.minor || left.patch - right.patch;
 }
+
+export const REQUIREMENT_CATEGORIES = Object.freeze(['safety', 'technical', 'quality']);
+
+export function recommendAdapters({ registry, requirements = [], allowQualityOverride = false, limit = 3 } = {}) {
+  assertApprovedRegistry(registry);
+  const candidates = Object.values(registry.adapters).map((entry) => scoreAdapterCandidate({ entry, requirements, allowQualityOverride }));
+  const recommended = candidates
+    .filter((candidate) => candidate.eligible)
+    .sort(compareRecommendations)
+    .slice(0, limit)
+    .map(finalizeRecommendation);
+  const blocked = candidates
+    .filter((candidate) => !candidate.eligible)
+    .sort((a, b) => a.entry.adapterId.localeCompare(b.entry.adapterId))
+    .map(finalizeRecommendation);
+  return deepFreeze({ recommended, blocked });
+}
+
+export function explainAdapterRecommendation(recommendation) {
+  if (!recommendation) throw new AdapterContractError('Recommendation is required.');
+  return Object.freeze(recommendation.reasons.slice(0, 3));
+}
+
+function scoreAdapterCandidate({ entry, requirements, allowQualityOverride }) {
+  const failures = [];
+  const warnings = [];
+  const strengths = [];
+  let score = entry.priority;
+
+  if (entry.availability !== 'available') {
+    failures.push({ category: 'technical', requirement: 'adapter-available', reason: entry.availabilityReason });
+    score -= 1000;
+  } else {
+    strengths.push({ factor: 'availability', detail: entry.availabilityReason, weight: 30 });
+    score += 30;
+  }
+
+  for (const requirement of normalizeRequirements(requirements)) {
+    const matched = adapterMatchesRequirement(entry, requirement);
+    if (matched) {
+      const weight = requirement.weight ?? defaultRequirementWeight(requirement.category);
+      strengths.push({ factor: requirement.id, detail: `matches ${requirement.kind}:${requirement.value}`, weight });
+      score += weight;
+      continue;
+    }
+
+    const failure = { category: requirement.category, requirement: requirement.id, reason: `missing ${requirement.kind}:${requirement.value}` };
+    if (requirement.required === true && requirement.category !== 'quality') failures.push(failure);
+    else if (requirement.required === true && requirement.category === 'quality' && allowQualityOverride !== true) failures.push(failure);
+    else warnings.push(failure);
+    score -= requirement.category === 'quality' ? 10 : 200;
+  }
+
+  const hardFailures = failures.filter((failure) => failure.category === 'safety' || failure.category === 'technical');
+  const qualityFailures = failures.filter((failure) => failure.category === 'quality');
+  const eligible = entry.availability === 'available' && hardFailures.length === 0 && qualityFailures.length === 0;
+  const override = warnings.filter((warning) => warning.category === 'quality').length > 0 && allowQualityOverride === true;
+  return { entry, score, eligible, override, failures, warnings, strengths };
+}
+
+function finalizeRecommendation(candidate) {
+  return deepFreeze({
+    adapterId: candidate.entry.adapterId,
+    displayName: candidate.entry.displayName,
+    score: candidate.score,
+    eligible: candidate.eligible,
+    overrideUsed: candidate.override,
+    availability: candidate.entry.availability,
+    failures: candidate.failures,
+    warnings: candidate.warnings,
+    reasons: buildTopReasons(candidate)
+  });
+}
+
+function buildTopReasons(candidate) {
+  const reasons = [];
+  for (const failure of candidate.failures) reasons.push({ type: 'blocker', factor: failure.requirement, detail: failure.reason, category: failure.category });
+  for (const warning of candidate.warnings) reasons.push({ type: 'warning', factor: warning.requirement, detail: warning.reason, category: warning.category });
+  for (const strength of candidate.strengths.sort((a, b) => b.weight - a.weight)) reasons.push({ type: 'strength', factor: strength.factor, detail: strength.detail, category: 'score' });
+  reasons.push({ type: 'score', factor: 'priority', detail: `base priority ${candidate.entry.priority}`, category: 'score' });
+  return reasons.slice(0, 3);
+}
+
+function compareRecommendations(left, right) {
+  return right.score - left.score || left.entry.adapterId.localeCompare(right.entry.adapterId);
+}
+
+function normalizeRequirements(requirements) {
+  return requirements.map((requirement) => {
+    const normalized = {
+      id: requirement.id ?? `${requirement.kind}:${requirement.value}`,
+      kind: requirement.kind ?? 'capability',
+      value: requirement.value,
+      category: requirement.category ?? 'technical',
+      required: requirement.required !== false,
+      weight: requirement.weight
+    };
+    if (!REQUIREMENT_CATEGORIES.includes(normalized.category)) {
+      throw new AdapterContractError('Unknown requirement category.', { requirement: normalized });
+    }
+    if (!normalized.value) throw new AdapterContractError('Requirement value is required.', { requirement: normalized });
+    return normalized;
+  });
+}
+
+function adapterMatchesRequirement(entry, requirement) {
+  if (requirement.kind === 'capability') return entry.capabilities.includes(requirement.value);
+  if (requirement.kind === 'constraint') return entry.constraints.includes(requirement.value);
+  if (requirement.kind === 'access') return entry.access.includes(requirement.value);
+  if (requirement.kind === 'adapter') return entry.adapterId === requirement.value;
+  throw new AdapterContractError('Unknown requirement kind.', { requirement });
+}
+
+function defaultRequirementWeight(category) {
+  if (category === 'safety') return 80;
+  if (category === 'technical') return 50;
+  return 20;
+}
