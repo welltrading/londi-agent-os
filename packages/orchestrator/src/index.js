@@ -74,3 +74,9 @@ export {
   classifyWorkspaceValidationError
 } from './workspace-manager.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);
+
+export {
+  ProcessControlError,
+  createAttemptProcessManager,
+  deriveJobObjectName
+} from './process-manager.js';
