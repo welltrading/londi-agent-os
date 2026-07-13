@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 
@@ -132,6 +132,115 @@ function isPathInside(targetPath, rootPath) {
   return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/') && rel !== '..');
 }
 
+
+export class WorkspaceSnapshotError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'WorkspaceSnapshotError';
+    this.code = 'ERR_WORKSPACE_SNAPSHOT';
+    this.details = details;
+  }
+}
+
+export function getWorkspaceStatusSummary({ worktreePath, baseCommit } = {}) {
+  if (!worktreePath || !baseCommit) throw new WorkspaceSnapshotError('Worktree path and base commit are required for status summary.');
+  const resolvedWorktree = resolve(worktreePath);
+  const head = git(['rev-parse', 'HEAD'], resolvedWorktree);
+  if (head.status !== 0) throw new WorkspaceSnapshotError('Cannot read worktree HEAD.', { worktreePath: resolvedWorktree, reason: safeGitError(head) });
+  const status = git(['status', '--porcelain=v1', '--untracked-files=normal'], resolvedWorktree);
+  if (status.status !== 0) throw new WorkspaceSnapshotError('Cannot read worktree status.', { worktreePath: resolvedWorktree, reason: safeGitError(status) });
+  const diffName = git(['diff', '--name-status', `${baseCommit}...HEAD`], resolvedWorktree);
+  if (diffName.status !== 0) throw new WorkspaceSnapshotError('Cannot read committed diff summary from base.', { baseCommit, reason: safeGitError(diffName) });
+  const workingTreeDiff = git(['diff', '--name-status'], resolvedWorktree);
+  if (workingTreeDiff.status !== 0) throw new WorkspaceSnapshotError('Cannot read working-tree diff summary.', { reason: safeGitError(workingTreeDiff) });
+  return Object.freeze({
+    worktreePath: resolvedWorktree,
+    baseCommit,
+    headCommit: head.stdout.trim(),
+    statusEntries: parseLines(status.stdout),
+    committedDiffEntries: parseLines(diffName.stdout),
+    workingTreeDiffEntries: parseLines(workingTreeDiff.stdout)
+  });
+}
+
+export function getWorkspaceDiff({ worktreePath, baseCommit, secretPatterns = DEFAULT_SECRET_PATTERNS } = {}) {
+  if (!worktreePath || !baseCommit) throw new WorkspaceSnapshotError('Worktree path and base commit are required for diff.');
+  const resolvedWorktree = resolve(worktreePath);
+  const diff = git(['diff', '--binary', `${baseCommit}...HEAD`], resolvedWorktree);
+  if (diff.status !== 0) throw new WorkspaceSnapshotError('Cannot read worktree diff from base commit.', { baseCommit, reason: safeGitError(diff) });
+  const working = git(['diff', '--binary'], resolvedWorktree);
+  if (working.status !== 0) throw new WorkspaceSnapshotError('Cannot read uncommitted worktree diff.', { reason: safeGitError(working) });
+  const fullDiff = [diff.stdout, working.stdout].filter(Boolean).join('\n');
+  const redacted = redactSecrets(fullDiff, secretPatterns);
+  return Object.freeze({
+    worktreePath: resolvedWorktree,
+    baseCommit,
+    diff: redacted.text,
+    redactedSecrets: redacted.count,
+    suspiciousFiles: detectSuspiciousDiffFiles(fullDiff)
+  });
+}
+
+export function createWorkspaceAcceptanceSnapshot({ worktreePath, baseCommit, artifactsPath, snapshotId = new Date().toISOString().replace(/[:.]/g, '-') } = {}) {
+  if (!artifactsPath) throw new WorkspaceSnapshotError('Artifacts path is required for acceptance snapshot.');
+  const status = getWorkspaceStatusSummary({ worktreePath, baseCommit });
+  const diff = getWorkspaceDiff({ worktreePath, baseCommit });
+  const resolvedArtifacts = resolve(artifactsPath);
+  mkdirSync(resolvedArtifacts, { recursive: true });
+  const snapshot = Object.freeze({
+    snapshotId,
+    baseCommit,
+    headCommit: status.headCommit,
+    worktreePath: status.worktreePath,
+    statusEntries: status.statusEntries,
+    committedDiffEntries: status.committedDiffEntries,
+    workingTreeDiffEntries: status.workingTreeDiffEntries,
+    redactedSecrets: diff.redactedSecrets,
+    suspiciousFiles: diff.suspiciousFiles,
+    createdAt: new Date().toISOString()
+  });
+  const summaryPath = join(resolvedArtifacts, `git-snapshot-${snapshotId}.json`);
+  const diffPath = join(resolvedArtifacts, `git-diff-${snapshotId}.patch`);
+  writeFileSync(summaryPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+  writeFileSync(diffPath, `${diff.diff}\n`, 'utf8');
+  return Object.freeze({ ...snapshot, summaryPath, diffPath });
+}
+
+const DEFAULT_SECRET_PATTERNS = Object.freeze([
+  /ghp_[A-Za-z0-9]{20,}/g,
+  /xox[baprs]-[A-Za-z0-9-]{20,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (RSA |EC |OPENSSH )?PRIVATE KEY-----/g
+]);
+
+function redactSecrets(text, patterns) {
+  let count = 0;
+  let redacted = text;
+  for (const pattern of patterns) {
+    redacted = redacted.replace(pattern, () => {
+      count += 1;
+      return '[REDACTED_SECRET]';
+    });
+  }
+  return { text: redacted, count };
+}
+
+function detectSuspiciousDiffFiles(diffText) {
+  const files = [];
+  for (const line of diffText.split('\n')) {
+    if (!line.startsWith('diff --git ')) continue;
+    const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (!match) continue;
+    const file = match[2];
+    if (/\.env($|\.)|secret|credential|private[-_]?key/i.test(file)) files.push(file);
+  }
+  return Object.freeze([...new Set(files)]);
+}
+
+function parseLines(text) {
+  return Object.freeze(text.split('\n').filter(Boolean));
+}
+
 export function validateGitProject({ repositoryPath, targetBranch, runId, lockStore, allowDirty = true } = {}) {
   const checks = [];
   const resolvedRepositoryPath = repositoryPath ? resolve(repositoryPath) : undefined;
@@ -204,7 +313,7 @@ export function createInMemoryWorkspaceLockStore() {
 
 export function classifyWorkspaceValidationError(error) {
   if (error instanceof WorkspaceLockConflictError) return { status: 'Blocked', reason: 'lock-conflict', errorCode: error.code, details: error.details };
-  if (error instanceof WorkspaceValidationError || error instanceof WorkspaceLifecycleError || error instanceof WorkspaceIsolationError) return { status: 'Blocked', reason: 'validation', errorCode: error.code, details: error.details };
+  if (error instanceof WorkspaceValidationError || error instanceof WorkspaceLifecycleError || error instanceof WorkspaceIsolationError || error instanceof WorkspaceSnapshotError) return { status: 'Blocked', reason: 'validation', errorCode: error.code, details: error.details };
   throw error;
 }
 

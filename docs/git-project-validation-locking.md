@@ -41,3 +41,15 @@ The Workspace Manager now exposes a service-account isolation policy model:
 - Negative tests prove write attempts to those locations are rejected with `WorkspaceIsolationError`.
 
 This baseline models and verifies path-level isolation in the orchestrator. OS-specific Windows ACL application is deferred to the later Windows/service hardening slice.
+
+## E2-T05 Git snapshots, status and diff
+
+The Workspace Manager now exposes Git status/diff and acceptance snapshot helpers:
+
+- `getWorkspaceStatusSummary()` reads `HEAD`, status entries, committed diff entries from `baseCommit...HEAD`, and working-tree diff entries.
+- `getWorkspaceDiff()` returns a redacted patch from the run worktree only.
+- `createWorkspaceAcceptanceSnapshot()` writes a JSON summary and redacted patch under the run artifacts path before Acceptance.
+- Suspicious diff files such as `.env*`, secret-related filenames and credential/private-key names are marked for review.
+- Secret-like strings in diffs are replaced with `[REDACTED_SECRET]`.
+
+Negative coverage proves a change in the source repository outside the run worktree is not included in the acceptance diff/snapshot.

@@ -10,6 +10,9 @@ import {
   classifyWorkspaceValidationError,
   createInMemoryWorkspaceLockStore,
   createRunWorkspace,
+  createWorkspaceAcceptanceSnapshot,
+  getWorkspaceDiff,
+  getWorkspaceStatusSummary,
   createServiceAccountIsolationPolicy,
   deriveRunBranchName,
   deriveRunWorktreePath,
@@ -96,6 +99,28 @@ try {
       WorkspaceIsolationError
     );
   }
+
+  writeFileSync(join(manifest.worktreePath, 'feature.txt'), 'safe change\n');
+  const fakeSecret = 'ghp_' + '1234567890123456789012345';
+  writeFileSync(join(manifest.worktreePath, '.env.local'), `TOKEN=${fakeSecret}\n`);
+  git(manifest.worktreePath, ['add', 'feature.txt', '.env.local']);
+  git(manifest.worktreePath, ['commit', '-m', 'agent changes']);
+  writeFileSync(join(repo, 'outside-source-change.txt'), 'outside\n');
+  const statusSummary = getWorkspaceStatusSummary({ worktreePath: manifest.worktreePath, baseCommit: manifest.baseCommit });
+  assert.equal(statusSummary.baseCommit, manifest.baseCommit);
+  assert.equal(statusSummary.committedDiffEntries.some((entry) => entry.includes('feature.txt')), true);
+  assert.equal(statusSummary.committedDiffEntries.some((entry) => entry.includes('outside-source-change.txt')), false);
+  const diff = getWorkspaceDiff({ worktreePath: manifest.worktreePath, baseCommit: manifest.baseCommit });
+  assert.equal(diff.diff.includes('safe change'), true);
+  assert.equal(diff.diff.includes(fakeSecret), false);
+  assert.equal(diff.diff.includes('[REDACTED_SECRET]'), true);
+  assert.equal(diff.suspiciousFiles.includes('.env.local'), true);
+  const snapshot = createWorkspaceAcceptanceSnapshot({ worktreePath: manifest.worktreePath, baseCommit: manifest.baseCommit, artifactsPath: join(root, 'data', 'runs', manifest.runId, 'artifacts'), snapshotId: 'acceptance-1' });
+  assert.equal(existsSync(snapshot.summaryPath), true);
+  assert.equal(existsSync(snapshot.diffPath), true);
+  assert.equal(JSON.parse(readFileSync(snapshot.summaryPath, 'utf8')).baseCommit, manifest.baseCommit);
+  assert.equal(readFileSync(snapshot.diffPath, 'utf8').includes('[REDACTED_SECRET]'), true);
+  assert.equal(readFileSync(snapshot.diffPath, 'utf8').includes('outside-source-change.txt'), false);
 
   console.log('Workspace manager tests OK');
 } finally {
