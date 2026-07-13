@@ -241,6 +241,104 @@ function parseLines(text) {
   return Object.freeze(text.split('\n').filter(Boolean));
 }
 
+
+export class WorkspaceCleanupError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'WorkspaceCleanupError';
+    this.code = 'ERR_WORKSPACE_CLEANUP';
+    this.details = details;
+  }
+}
+
+export function createWorkspaceCleanupPlan({ run, now = new Date().toISOString() } = {}) {
+  if (!run) throw new WorkspaceCleanupError('Run metadata is required for cleanup planning.');
+  const reasons = [];
+  if (run.keep === true) reasons.push('keep-enabled');
+  if (run.state === 'Accepted') reasons.push('accepted-awaiting-merge-verification');
+  if (OPEN_RUN_STATES_FOR_CLEANUP.has(run.state)) reasons.push('run-open');
+  const finalRetentionDays = retentionDaysForRun(run);
+  if (finalRetentionDays === null) reasons.push('state-not-cleanable');
+  const retentionStart = retentionStartForRun(run);
+  if (finalRetentionDays !== null && !retentionStart) reasons.push('missing-retention-start');
+  const ageDays = retentionStart ? (Date.parse(now) - Date.parse(retentionStart)) / 86_400_000 : 0;
+  if (finalRetentionDays !== null && retentionStart && ageDays < finalRetentionDays) reasons.push('retention-window-active');
+  const mergeVerified = Boolean(run.mergeVerifiedAt && run.targetCommit);
+  if (run.state === 'Completed' && !mergeVerified) reasons.push('merge-not-verified');
+
+  const eligible = reasons.length === 0;
+  const actions = eligible ? {
+    removeWorktree: Boolean(run.worktreePath),
+    deleteBranch: run.state === 'Completed' && mergeVerified && Boolean(run.branchName)
+  } : { removeWorktree: false, deleteBranch: false };
+  return Object.freeze({
+    runId: run.runId,
+    state: run.state,
+    eligible,
+    reasons: Object.freeze(reasons),
+    retentionDays: finalRetentionDays,
+    retentionStart,
+    ageDays,
+    branchName: run.branchName,
+    worktreePath: run.worktreePath,
+    actions: Object.freeze(actions)
+  });
+}
+
+export function executeWorkspaceCleanupPlan({ repositoryPath, plan } = {}) {
+  if (!plan) throw new WorkspaceCleanupError('Cleanup plan is required.');
+  if (!plan.eligible) throw new WorkspaceCleanupError('Cleanup plan is not eligible for execution.', { reasons: plan.reasons });
+  const resolvedRepository = repositoryPath ? resolve(repositoryPath) : undefined;
+  const results = [];
+  if (plan.actions.removeWorktree && plan.worktreePath) {
+    if (existsSync(plan.worktreePath)) {
+      const remove = git(['worktree', 'remove', '--force', plan.worktreePath], resolvedRepository);
+      if (remove.status !== 0) throw new WorkspaceCleanupError('Failed to remove run worktree.', { worktreePath: plan.worktreePath, reason: safeGitError(remove), results });
+      results.push({ action: 'remove-worktree', status: 'done', path: plan.worktreePath });
+    } else {
+      results.push({ action: 'remove-worktree', status: 'already-absent', path: plan.worktreePath });
+    }
+  }
+  if (plan.actions.deleteBranch && plan.branchName) {
+    const exists = git(['show-ref', '--verify', '--quiet', `refs/heads/${plan.branchName}`], resolvedRepository);
+    if (exists.status === 0) {
+      const del = git(['branch', '-D', plan.branchName], resolvedRepository);
+      if (del.status !== 0) throw new WorkspaceCleanupError('Failed to delete run branch.', { branchName: plan.branchName, reason: safeGitError(del), results });
+      results.push({ action: 'delete-branch', status: 'done', branchName: plan.branchName });
+    } else {
+      results.push({ action: 'delete-branch', status: 'already-absent', branchName: plan.branchName });
+    }
+  }
+  return Object.freeze({ runId: plan.runId, results: Object.freeze(results) });
+}
+
+function retentionDaysForRun(run) {
+  if (run.state === 'Completed') return 7;
+  if (['Failed', 'Cancelled', 'Needs Attention'].includes(run.state)) return 30;
+  return null;
+}
+
+function retentionStartForRun(run) {
+  if (run.state === 'Completed') return run.completedAt ?? run.mergeVerifiedAt;
+  if (['Failed', 'Cancelled', 'Needs Attention'].includes(run.state)) return run.terminalAt ?? run.updatedAt ?? run.completedAt;
+  return null;
+}
+
+const OPEN_RUN_STATES_FOR_CLEANUP = Object.freeze(new Set([
+  'Draft',
+  'Preflight Running',
+  'Blocked',
+  'Ready',
+  'Awaiting Pipeline Approval',
+  'Preparing Workspace',
+  'Running',
+  'Awaiting Approval',
+  'Unresponsive',
+  'Recovery Required',
+  'Awaiting Acceptance',
+  'Maintenance Hold'
+]));
+
 export function validateGitProject({ repositoryPath, targetBranch, runId, lockStore, allowDirty = true } = {}) {
   const checks = [];
   const resolvedRepositoryPath = repositoryPath ? resolve(repositoryPath) : undefined;
@@ -313,7 +411,7 @@ export function createInMemoryWorkspaceLockStore() {
 
 export function classifyWorkspaceValidationError(error) {
   if (error instanceof WorkspaceLockConflictError) return { status: 'Blocked', reason: 'lock-conflict', errorCode: error.code, details: error.details };
-  if (error instanceof WorkspaceValidationError || error instanceof WorkspaceLifecycleError || error instanceof WorkspaceIsolationError || error instanceof WorkspaceSnapshotError) return { status: 'Blocked', reason: 'validation', errorCode: error.code, details: error.details };
+  if (error instanceof WorkspaceValidationError || error instanceof WorkspaceLifecycleError || error instanceof WorkspaceIsolationError || error instanceof WorkspaceSnapshotError || error instanceof WorkspaceCleanupError) return { status: 'Blocked', reason: 'validation', errorCode: error.code, details: error.details };
   throw error;
 }
 

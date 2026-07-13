@@ -53,3 +53,18 @@ The Workspace Manager now exposes Git status/diff and acceptance snapshot helper
 - Secret-like strings in diffs are replaced with `[REDACTED_SECRET]`.
 
 Negative coverage proves a change in the source repository outside the run worktree is not included in the acceptance diff/snapshot.
+
+## E2-T06 Cleanup and retention guards
+
+The Workspace Manager now exposes idempotent cleanup planning and execution helpers:
+
+- `createWorkspaceCleanupPlan()` evaluates run metadata against retention policy before any deletion.
+- `executeWorkspaceCleanupPlan()` removes the run worktree and deletes the run branch only when the plan is eligible.
+- `Accepted` and open runs are never cleanup-eligible.
+- `Completed` runs become eligible only after seven days and only with merge verification metadata (`mergeVerifiedAt` and `targetCommit`).
+- `Failed`, `Cancelled` and `Needs Attention` runs use a 30-day retention window.
+- `keep: true` blocks cleanup regardless of age.
+- Branch deletion is guarded behind `Completed` + merge verification; non-completed cleanup never deletes branches.
+- Cleanup execution is idempotent: already-removed worktrees or branches return `already-absent` instead of failing.
+
+Integration coverage verifies Accepted/open runs are blocked, branch deletion is refused without merge verification, partial cleanup can be retried, and stale completed runs remove both branch and worktree.

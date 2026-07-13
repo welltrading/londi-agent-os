@@ -11,6 +11,8 @@ import {
   createInMemoryWorkspaceLockStore,
   createRunWorkspace,
   createWorkspaceAcceptanceSnapshot,
+  createWorkspaceCleanupPlan,
+  executeWorkspaceCleanupPlan,
   getWorkspaceDiff,
   getWorkspaceStatusSummary,
   createServiceAccountIsolationPolicy,
@@ -121,6 +123,28 @@ try {
   assert.equal(JSON.parse(readFileSync(snapshot.summaryPath, 'utf8')).baseCommit, manifest.baseCommit);
   assert.equal(readFileSync(snapshot.diffPath, 'utf8').includes('[REDACTED_SECRET]'), true);
   assert.equal(readFileSync(snapshot.diffPath, 'utf8').includes('outside-source-change.txt'), false);
+
+  const oldEnough = '2026-07-01T00:00:00.000Z';
+  const now = '2026-07-13T00:00:00.000Z';
+  assert.equal(createWorkspaceCleanupPlan({ run: { ...manifest, state: 'Accepted', acceptedAt: oldEnough }, now }).eligible, false);
+  assert.equal(createWorkspaceCleanupPlan({ run: { ...manifest, state: 'Running', updatedAt: oldEnough }, now }).reasons.includes('run-open'), true);
+  assert.equal(createWorkspaceCleanupPlan({ run: { ...manifest, state: 'Completed', completedAt: oldEnough, mergeVerifiedAt: oldEnough }, now }).reasons.includes('merge-not-verified'), true);
+  assert.equal(createWorkspaceCleanupPlan({ run: { ...manifest, state: 'Completed', completedAt: oldEnough, mergeVerifiedAt: oldEnough, targetCommit: statusSummary.headCommit, keep: true }, now }).reasons.includes('keep-enabled'), true);
+  assert.equal(createWorkspaceCleanupPlan({ run: { ...manifest, state: 'Failed', terminalAt: oldEnough }, now }).reasons.includes('retention-window-active'), true);
+
+  const cleanupPlan = createWorkspaceCleanupPlan({
+    run: { ...manifest, state: 'Completed', completedAt: oldEnough, mergeVerifiedAt: oldEnough, targetCommit: statusSummary.headCommit },
+    now
+  });
+  assert.equal(cleanupPlan.eligible, true);
+  assert.equal(cleanupPlan.actions.removeWorktree, true);
+  assert.equal(cleanupPlan.actions.deleteBranch, true);
+  const cleanup = executeWorkspaceCleanupPlan({ repositoryPath: repo, plan: cleanupPlan });
+  assert.equal(cleanup.results.some((result) => result.action === 'remove-worktree' && result.status === 'done'), true);
+  assert.equal(cleanup.results.some((result) => result.action === 'delete-branch' && result.status === 'done'), true);
+  assert.equal(existsSync(manifest.worktreePath), false);
+  const cleanupAgain = executeWorkspaceCleanupPlan({ repositoryPath: repo, plan: cleanupPlan });
+  assert.equal(cleanupAgain.results.every((result) => result.status === 'already-absent'), true);
 
   console.log('Workspace manager tests OK');
 } finally {
