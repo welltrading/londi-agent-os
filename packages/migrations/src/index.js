@@ -5,7 +5,7 @@ import { loadDefaultLocalConfig, validateLocalConfig } from '@londi-agent-os/con
 
 export const MIGRATIONS_PACKAGE = '@londi-agent-os/migrations';
 export const INITIAL_SCHEMA_VERSION = 0;
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export const MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -29,6 +29,220 @@ export const MIGRATIONS = Object.freeze([
         event_type TEXT NOT NULL,
         severity TEXT NOT NULL,
         payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`
+    ])
+  }),
+  Object.freeze({
+    version: 2,
+    name: 'domain-model-foundation',
+    statements: Object.freeze([
+      `CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        repository_path TEXT NOT NULL,
+        default_target_branch TEXT NOT NULL,
+        vault_scope_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        revision INTEGER NOT NULL DEFAULT 1
+      )`,
+      `ALTER TABLE runs ADD COLUMN project_id TEXT REFERENCES projects(id)`,
+      `ALTER TABLE runs ADD COLUMN task TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE runs ADD COLUMN pipeline_type TEXT NOT NULL DEFAULT 'direct'`,
+      `ALTER TABLE runs ADD COLUMN state TEXT NOT NULL DEFAULT 'Draft'`,
+      `ALTER TABLE runs ADD COLUMN base_commit TEXT`,
+      `ALTER TABLE runs ADD COLUMN target_branch TEXT`,
+      `ALTER TABLE runs ADD COLUMN branch_name TEXT`,
+      `ALTER TABLE runs ADD COLUMN worktree_path TEXT`,
+      `ALTER TABLE runs ADD COLUMN retention_class TEXT NOT NULL DEFAULT 'active'`,
+      `ALTER TABLE runs ADD COLUMN keep INTEGER NOT NULL DEFAULT 0 CHECK (keep IN (0, 1))`,
+      `ALTER TABLE runs ADD COLUMN accepted_at TEXT`,
+      `ALTER TABLE runs ADD COLUMN merge_verified_at TEXT`,
+      `ALTER TABLE runs ADD COLUMN target_commit TEXT`,
+      `ALTER TABLE runs ADD COLUMN completed_at TEXT`,
+      `ALTER TABLE runs ADD COLUMN revision INTEGER NOT NULL DEFAULT 1`,
+      `CREATE TRIGGER IF NOT EXISTS runs_completed_insert_guard
+        BEFORE INSERT ON runs
+        WHEN NEW.state = 'Completed' AND (NEW.accepted_at IS NULL OR NEW.merge_verified_at IS NULL OR NEW.target_commit IS NULL)
+        BEGIN
+          SELECT RAISE(ABORT, 'Completed run requires accepted_at, merge_verified_at and target_commit');
+        END`,
+      `CREATE TRIGGER IF NOT EXISTS runs_completed_update_guard
+        BEFORE UPDATE ON runs
+        WHEN NEW.state = 'Completed' AND (NEW.accepted_at IS NULL OR NEW.merge_verified_at IS NULL OR NEW.target_commit IS NULL)
+        BEGIN
+          SELECT RAISE(ABORT, 'Completed run requires accepted_at, merge_verified_at and target_commit');
+        END`,
+      `CREATE TABLE IF NOT EXISTS steps (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        assigned_adapter TEXT,
+        state TEXT NOT NULL DEFAULT 'Pending',
+        timeout_ms INTEGER,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        correction_cycle INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(run_id, ordinal)
+      )`,
+      `CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        adapter_type TEXT NOT NULL CHECK (adapter_type IN ('claude-code', 'codex')),
+        version TEXT NOT NULL,
+        health TEXT NOT NULL,
+        availability TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS capability_manifests (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        agent_version TEXT NOT NULL,
+        capabilities_json TEXT NOT NULL,
+        constraints_json TEXT NOT NULL,
+        required_tools_json TEXT NOT NULL,
+        context_limit INTEGER NOT NULL,
+        permissions_json TEXT NOT NULL,
+        health TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS attempts (
+        id TEXT PRIMARY KEY,
+        step_id TEXT NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+        agent_id TEXT REFERENCES agents(id),
+        started_at TEXT NOT NULL DEFAULT (datetime('now')),
+        ended_at TEXT,
+        exit_classification TEXT,
+        checkpoint_id TEXT,
+        heartbeat_at TEXT,
+        external_effect_state TEXT NOT NULL DEFAULT 'none',
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS one_active_attempt_per_step ON attempts(step_id) WHERE active = 1`,
+      `CREATE TABLE IF NOT EXISTS approval_requests (
+        id TEXT PRIMARY KEY,
+        run_id TEXT REFERENCES runs(id) ON DELETE CASCADE,
+        step_id TEXT REFERENCES steps(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        revision_hash TEXT NOT NULL,
+        expires_at TEXT,
+        state TEXT NOT NULL DEFAULT 'Pending',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS approval_decisions (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL REFERENCES approval_requests(id) ON DELETE CASCADE,
+        actor TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reason TEXT,
+        revision_hash TEXT NOT NULL,
+        decided_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS context_sources (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        title TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0, 1))
+      )`,
+      `CREATE TABLE IF NOT EXISTS artifacts (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        attempt_id TEXT REFERENCES attempts(id),
+        type TEXT NOT NULL,
+        path TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS checkpoints (
+        id TEXT PRIMARY KEY,
+        attempt_id TEXT NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        resumability TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(attempt_id, sequence)
+      )`,
+      `CREATE TABLE IF NOT EXISTS events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        run_id TEXT REFERENCES runs(id) ON DELETE CASCADE,
+        step_id TEXT REFERENCES steps(id) ON DELETE CASCADE,
+        severity TEXT NOT NULL DEFAULT 'info',
+        payload_redacted TEXT NOT NULL,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS audit_entries (
+        id TEXT PRIMARY KEY,
+        event_id INTEGER NOT NULL REFERENCES events(event_id),
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target TEXT NOT NULL,
+        result TEXT NOT NULL,
+        metadata_redacted TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS secret_grants (
+        id TEXT PRIMARY KEY,
+        secret_alias TEXT NOT NULL,
+        run_id TEXT REFERENCES runs(id) ON DELETE CASCADE,
+        step_id TEXT REFERENCES steps(id) ON DELETE CASCADE,
+        agent_id TEXT REFERENCES agents(id),
+        status TEXT NOT NULL,
+        issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at TEXT NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS preflight_results (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (status IN ('Ready', 'Ready with Warnings', 'Blocked')),
+        checks_json TEXT NOT NULL,
+        evidence_redacted TEXT NOT NULL,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS dependency_approvals (
+        id TEXT PRIMARY KEY,
+        package_or_tool TEXT NOT NULL,
+        version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS backup_records (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        integrity_status TEXT NOT NULL,
+        version TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS update_records (
+        id TEXT PRIMARY KEY,
+        from_version TEXT NOT NULL,
+        to_version TEXT NOT NULL,
+        snapshot TEXT NOT NULL,
+        tests_json TEXT NOT NULL,
+        result TEXT NOT NULL,
+        rollback TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS obsidian_writebacks (
+        id TEXT PRIMARY KEY,
+        run_id TEXT REFERENCES runs(id) ON DELETE CASCADE,
+        draft_path TEXT NOT NULL,
+        destination_path TEXT NOT NULL,
+        approved_hash TEXT NOT NULL,
+        result TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`
     ])

@@ -136,9 +136,52 @@ const migrationConfig = {
 };
 const firstMigration = runMigrations({ config: migrationConfig });
 assert.equal(firstMigration.schemaVersion, CURRENT_SCHEMA_VERSION);
-assert.deepEqual(firstMigration.applied, [1]);
+assert.deepEqual(firstMigration.applied, [1, 2]);
 assert.equal(firstMigration.backupPath, null);
 assert.equal(getSchemaVersion(migrationConfig.paths.database), CURRENT_SCHEMA_VERSION);
+const schemaDatabase = new DatabaseSync(migrationConfig.paths.database);
+const tables = schemaDatabase.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((row) => row.name);
+for (const tableName of [
+  'projects',
+  'runs',
+  'steps',
+  'agents',
+  'capability_manifests',
+  'attempts',
+  'approval_requests',
+  'approval_decisions',
+  'context_sources',
+  'artifacts',
+  'checkpoints',
+  'events',
+  'audit_entries',
+  'secret_grants',
+  'preflight_results',
+  'dependency_approvals',
+  'backup_records',
+  'update_records',
+  'obsidian_writebacks'
+]) assert.equal(tables.includes(tableName), true, `missing table: ${tableName}`);
+schemaDatabase.prepare("INSERT INTO projects (id, repository_path, default_target_branch) VALUES ('project-1', './repo', 'main')").run();
+assert.throws(
+  () => schemaDatabase.prepare("INSERT INTO runs (id, status, template, project_id, task, pipeline_type, state) VALUES ('run-bad-completed', 'x', 'direct', 'project-1', 'task', 'direct', 'Completed')").run(),
+  /Completed run requires accepted_at/
+);
+schemaDatabase.prepare("INSERT INTO runs (id, status, template, project_id, task, pipeline_type, state, accepted_at, merge_verified_at, target_commit) VALUES ('run-completed', 'x', 'direct', 'project-1', 'task', 'direct', 'Completed', '2026-01-01T00:00:00Z', '2026-01-01T00:01:00Z', 'abc123')").run();
+schemaDatabase.prepare("INSERT INTO steps (id, run_id, role, ordinal) VALUES ('step-1', 'run-completed', 'build', 1)").run();
+schemaDatabase.prepare("INSERT INTO agents (id, adapter_type, version, health, availability) VALUES ('agent-1', 'claude-code', '1.0.0', 'healthy', 'available')").run();
+schemaDatabase.prepare("INSERT INTO attempts (id, step_id, agent_id) VALUES ('attempt-1', 'step-1', 'agent-1')").run();
+assert.throws(
+  () => schemaDatabase.prepare("INSERT INTO attempts (id, step_id, agent_id) VALUES ('attempt-2', 'step-1', 'agent-1')").run(),
+  /UNIQUE constraint failed/
+);
+schemaDatabase.prepare("INSERT INTO secret_grants (id, secret_alias, run_id, step_id, agent_id, status, expires_at) VALUES ('grant-1', 'OPENAI_API_KEY', 'run-completed', 'step-1', 'agent-1', 'issued', '2026-01-01T00:30:00Z')").run();
+const secretColumns = schemaDatabase.prepare("PRAGMA table_info(secret_grants)").all().map((column) => column.name);
+assert.equal(secretColumns.some((name) => /value|secret_value|token|password/i.test(name)), false);
+const eventOne = schemaDatabase.prepare("INSERT INTO events (type, run_id, payload_redacted) VALUES ('run.created', 'run-completed', '{}') RETURNING event_id").get().event_id;
+const eventTwo = schemaDatabase.prepare("INSERT INTO events (type, run_id, payload_redacted) VALUES ('run.state.changed', 'run-completed', '{}') RETURNING event_id").get().event_id;
+assert.equal(eventTwo, eventOne + 1);
+schemaDatabase.close();
 const secondMigration = runMigrations({ config: migrationConfig });
 assert.deepEqual(secondMigration.applied, []);
 assert.equal(typeof secondMigration.backupPath, 'string');

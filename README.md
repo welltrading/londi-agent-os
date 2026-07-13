@@ -4,7 +4,7 @@ Local-first orchestration system for running approved agent pipelines over Git w
 
 ## Current implementation slice
 
-This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest**, **E0-T03 — local configuration/data paths**, **E0-T04 — Windows Service lifecycle skeleton**, **E0-T05 — Local API authentication baseline**, **E0-T06 — logging/requestId/redaction baseline**, **E0-T07 — SQLite bootstrap/migrations baseline** and **E0-T08 — CI/baseline checks**.
+This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest**, **E0-T03 — local configuration/data paths**, **E0-T04 — Windows Service lifecycle skeleton**, **E0-T05 — Local API authentication baseline**, **E0-T06 — logging/requestId/redaction baseline**, **E0-T07 — SQLite bootstrap/migrations baseline** and **E0-T08 — CI/baseline checks** and **E1-T01 — domain model/SQLite entities**.
 
 Included packages:
 
@@ -22,5 +22,6 @@ Included packages:
 - `docs/logging-redaction.md` — structured logging, request IDs and redaction baseline.
 - `docs/sqlite-migrations.md` — SQLite bootstrap, migrations, rollback and backup baseline.
 - `docs/ci-baseline.md` — CI workflow and baseline gate commands.
+- `docs/domain-model.md` — SQLite domain entities and enforced constraints.
 
 Source of truth: `/a0/usr/workdir/specs/2026-07-13-londi-agent-os-execution-spec.md`.
