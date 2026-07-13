@@ -99,6 +99,18 @@ export {
   assertThirdAttemptRequiresException
 } from './correction-cycle.js';
 export {
+  ARTIFACT_LAYOUT_VERSION,
+  ARTIFACT_DIRECTORIES,
+  ARTIFACT_SECRET_PATTERNS,
+  ArtifactLayoutError,
+  createArtifactLayout,
+  writeArtifactRecord,
+  createArtifactManifest,
+  writeArtifactManifest,
+  verifyArtifactRecord,
+  assertCheckpointWithoutSecrets
+} from './artifact-layout.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
