@@ -17,12 +17,16 @@ import {
   StateTransitionError,
   ArtifactMismatchError,
   IdempotencyConflictError,
+  AuditAppendOnlyError,
   ExpiredApprovalError,
   StaleApprovalError,
   IdempotencyReplayError,
   StaleRevisionError,
   assertFreshRevision,
+  appendEventAndAudit,
+  compareEventOrder,
   createApprovalRequest,
+  createInMemoryEventStore,
   decideApproval,
   hashApprovalPayload,
   invalidateApprovalOnChange,
@@ -233,6 +237,30 @@ assert.throws(
 );
 assert.equal(invalidateApprovalOnChange(approvalRequest, { revisionHash: 'revision-2' }).state, 'Invalidated');
 assert.equal(invalidateApprovalOnChange(approvalRequest, { payloadHash: approvalRequest.payloadHash, revisionHash: approvalRequest.revisionHash }), approvalRequest);
+const eventStore = createInMemoryEventStore();
+const firstAuditPair = appendEventAndAudit(eventStore, {
+  event: { type: 'run.created', runId: 'run-event-1', severity: 'info', payloadRedacted: { state: 'Draft' }, timestamp: '2026-01-01T00:10:00.000Z' },
+  audit: { id: 'audit-event-1', actor: 'londi', action: 'create-run', target: 'run-event-1', result: 'ok', metadataRedacted: { ip: 'local' }, createdAt: '2026-01-01T00:10:00.000Z' }
+});
+const secondAuditPair = appendEventAndAudit(eventStore, {
+  event: { type: 'run.state.changed', runId: 'run-event-1', severity: 'info', payloadRedacted: { from: 'Draft', to: 'Ready' }, timestamp: '2025-12-31T23:59:00.000Z' },
+  audit: { id: 'audit-event-2', actor: 'system', action: 'transition', target: 'run-event-1', result: 'ok', metadataRedacted: {}, createdAt: '2025-12-31T23:59:00.000Z' }
+});
+assert.equal(firstAuditPair.event.eventId, 1);
+assert.equal(secondAuditPair.event.eventId, 2);
+assert.equal(compareEventOrder(firstAuditPair.event, secondAuditPair.event) < 0, true);
+assert.deepEqual(eventStore.listEvents({ afterEventId: 1 }).map((event) => event.eventId), [2]);
+assert.equal(eventStore.listAudit({ runId: 'run-event-1' }).length, 2);
+assert.equal(eventStore.exportAudit({ runId: 'run-event-1', format: 'json' }).includes('audit-event-1'), true);
+const auditCsv = eventStore.exportAudit({ runId: 'run-event-1', format: 'csv' });
+assert.equal(auditCsv.split('\n')[0], 'id,eventId,actor,action,target,result,runId,stepId,createdAt');
+assert.equal(auditCsv.includes('audit-event-2'), true);
+assert.throws(() => eventStore.deleteAudit('audit-event-1'), AuditAppendOnlyError);
+assert.throws(() => eventStore.updateAudit('audit-event-1', { result: 'edited' }), AuditAppendOnlyError);
+assert.throws(
+  () => eventStore.appendAudit({ id: 'audit-orphan', eventId: 999, actor: 'system', action: 'orphan', target: 'run-event-1', result: 'failed' }),
+  (error) => error.code === 'ERR_AUDIT_EVENT_NOT_FOUND'
+);
 rmSync('./.tmp-test-data', { recursive: true, force: true });
 assert.equal(getHealthModel().packageName, '@londi-agent-os/local-api');
 assert.equal(getHealthModel().service, 'LondiAgentOSLocalApi');

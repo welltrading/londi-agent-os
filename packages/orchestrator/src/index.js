@@ -50,4 +50,12 @@ export {
   hashApprovalPayload,
   addMinutesIso
 } from './approvals.js';
+export {
+  EventStoreError,
+  AuditAppendOnlyError,
+  createInMemoryEventStore,
+  appendEventAndAudit,
+  compareEventOrder,
+  toAuditCsv
+} from './event-store.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);
