@@ -90,6 +90,15 @@ export {
   getHighestReviewSeverity
 } from './review.js';
 export {
+  CORRECTION_CYCLE_LIMIT,
+  CORRECTION_CYCLE_STATES,
+  CorrectionCycleError,
+  createCorrectionCycleState,
+  evaluateReviewForCorrection,
+  applyCorrectionCycleDecision,
+  assertThirdAttemptRequiresException
+} from './correction-cycle.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
