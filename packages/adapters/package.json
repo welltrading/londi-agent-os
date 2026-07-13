@@ -6,9 +6,6 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "build": "node src/index.js --build-check"
-  },
-  "scripts": {
     "build": "node ./verify-no-active-adapters.mjs"
   }
 }
