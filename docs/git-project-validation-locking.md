@@ -68,3 +68,16 @@ The Workspace Manager now exposes idempotent cleanup planning and execution help
 - Cleanup execution is idempotent: already-removed worktrees or branches return `already-absent` instead of failing.
 
 Integration coverage verifies Accepted/open runs are blocked, branch deletion is refused without merge verification, partial cleanup can be retried, and stale completed runs remove both branch and worktree.
+
+## E2-T07 Workspace security suite
+
+The Workspace Manager isolation checks now include security-focused escape coverage:
+
+- Path traversal attempts are resolved before authorization.
+- Control-character and malicious filename inputs are rejected before write simulation.
+- Symlink escapes are blocked by comparing both lexical path and physical `realpath` target.
+- Cross-worktree symlink escapes are denied.
+- Writes through links to vault/system/other-worktree roots fail with `WorkspaceIsolationError`.
+- Allowed writes must remain inside the run worktree or run artifacts both logically and physically.
+
+Integration coverage verifies traversal, malicious filename, vault symlink, and cross-worktree symlink cases, with zero writes allowed outside the run worktree/artifacts boundary.

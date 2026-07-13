@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 
@@ -114,12 +114,14 @@ export function createServiceAccountIsolationPolicy({ serviceAccount = 'LondiAge
 
 export function assertWorkspaceWriteAllowed({ policy, targetPath } = {}) {
   if (!policy) throw new WorkspaceIsolationError('Isolation policy is required.');
-  const resolvedTarget = resolve(targetPath ?? '');
-  const deniedRoot = policy.deniedWriteRoots.find((root) => isPathInside(resolvedTarget, root));
-  if (deniedRoot) throw new WorkspaceIsolationError('Write target is denied by isolation policy.', { targetPath: resolvedTarget, deniedRoot });
-  const allowedRoot = policy.allowedWriteRoots.find((root) => isPathInside(resolvedTarget, root));
-  if (!allowedRoot) throw new WorkspaceIsolationError('Write target is outside run worktree/artifacts.', { targetPath: resolvedTarget, allowedRoots: policy.allowedWriteRoots });
-  return { allowed: true, targetPath: resolvedTarget, allowedRoot };
+  assertSafeTargetPath(targetPath);
+  const resolvedTarget = resolve(targetPath);
+  const physicalTarget = resolvePhysicalTarget(resolvedTarget);
+  const deniedRoot = policy.deniedWriteRoots.find((root) => isPathInside(resolvedTarget, root) || isPathInside(physicalTarget, root));
+  if (deniedRoot) throw new WorkspaceIsolationError('Write target is denied by isolation policy.', { targetPath: resolvedTarget, physicalTarget, deniedRoot });
+  const allowedRoot = policy.allowedWriteRoots.find((root) => isPathInside(resolvedTarget, root) && isPathInside(physicalTarget, root));
+  if (!allowedRoot) throw new WorkspaceIsolationError('Write target is outside run worktree/artifacts.', { targetPath: resolvedTarget, physicalTarget, allowedRoots: policy.allowedWriteRoots });
+  return { allowed: true, targetPath: resolvedTarget, physicalTarget, allowedRoot };
 }
 
 export function simulateWorkspaceWrite({ policy, targetPath } = {}) {
@@ -130,6 +132,28 @@ export function simulateWorkspaceWrite({ policy, targetPath } = {}) {
 function isPathInside(targetPath, rootPath) {
   const rel = relative(rootPath, targetPath);
   return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/') && rel !== '..');
+}
+
+function assertSafeTargetPath(targetPath) {
+  if (typeof targetPath !== 'string' || targetPath.length === 0) {
+    throw new WorkspaceIsolationError('Write target path must be a non-empty string.', { targetPath });
+  }
+  if (/[\u0000-\u001f\u007f]/u.test(targetPath)) {
+    throw new WorkspaceIsolationError('Write target path contains control characters.', { targetPath });
+  }
+}
+
+function resolvePhysicalTarget(targetPath) {
+  let cursor = targetPath;
+  const missingSegments = [];
+  while (!existsSync(cursor)) {
+    const parent = dirname(cursor);
+    if (parent === cursor) return targetPath;
+    missingSegments.unshift(cursor.slice(parent.length + 1));
+    cursor = parent;
+  }
+  const physicalBase = realpathSync.native(cursor);
+  return resolve(physicalBase, ...missingSegments);
 }
 
 

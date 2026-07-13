@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -94,13 +94,27 @@ try {
     join(vaultRoot, 'private.md'),
     join(systemRoot, 'config.ini'),
     join(otherWorktree, 'cross-run.txt'),
-    join(root, 'outside.txt')
+    join(root, '..', root.split('/').pop(), 'outside.txt')
   ]) {
     assert.throws(
       () => assertWorkspaceWriteAllowed({ policy: isolationPolicy, targetPath: deniedPath }),
       WorkspaceIsolationError
     );
   }
+  assert.throws(
+    () => assertWorkspaceWriteAllowed({ policy: isolationPolicy, targetPath: `${manifest.worktreePath}/bad\nname.txt` }),
+    WorkspaceIsolationError
+  );
+  symlinkSync(vaultRoot, join(manifest.worktreePath, 'vault-link'), 'dir');
+  assert.throws(
+    () => assertWorkspaceWriteAllowed({ policy: isolationPolicy, targetPath: join(manifest.worktreePath, 'vault-link', 'escape.md') }),
+    WorkspaceIsolationError
+  );
+  symlinkSync(otherWorktree, join(manifest.worktreePath, 'other-worktree-link'), 'dir');
+  assert.throws(
+    () => simulateWorkspaceWrite({ policy: isolationPolicy, targetPath: join(manifest.worktreePath, 'other-worktree-link', 'escape.txt') }),
+    WorkspaceIsolationError
+  );
 
   writeFileSync(join(manifest.worktreePath, 'feature.txt'), 'safe change\n');
   const fakeSecret = 'ghp_' + '1234567890123456789012345';
