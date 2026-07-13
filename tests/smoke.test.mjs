@@ -12,6 +12,8 @@ import {
 import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, sanitizeForLog } from '../apps/local-api/src/index.js';
 import { getUiBootstrapModel } from '../apps/ui/src/index.js';
 import { ensureApprovedDataDirectories } from '../packages/orchestrator/src/index.js';
+import { DatabaseSync } from 'node:sqlite';
+import { CURRENT_SCHEMA_VERSION, MigrationError, getSchemaVersion, runMigrations, withTransaction } from '../packages/migrations/src/index.js';
 
 assert.deepEqual(MVP_PIPELINE_TEMPLATES, ['direct', 'plan-build', 'plan-build-review']);
 assert.equal(getHealthModel().packageName, '@londi-agent-os/local-api');
@@ -119,6 +121,44 @@ const queryTokenResponse = await fetch(`http://127.0.0.1:3212/system/health?toke
 assert.equal(queryTokenResponse.status, 400);
 assert.equal((await service.stop('test-complete')).status, 'stopped');
 rmSync('./.tmp-service-data', { recursive: true, force: true });
+
+const migrationDataRoot = './.tmp-migration-data';
+const migrationConfig = {
+  ...config,
+  dataRoot: migrationDataRoot,
+  paths: {
+    database: `${migrationDataRoot}/db/londi-agent-os.sqlite`,
+    runs: `${migrationDataRoot}/runs`,
+    worktrees: `${migrationDataRoot}/worktrees`,
+    backups: `${migrationDataRoot}/backups`,
+    obsidianSnapshots: `${migrationDataRoot}/obsidian-snapshots`
+  }
+};
+const firstMigration = runMigrations({ config: migrationConfig });
+assert.equal(firstMigration.schemaVersion, CURRENT_SCHEMA_VERSION);
+assert.deepEqual(firstMigration.applied, [1]);
+assert.equal(firstMigration.backupPath, null);
+assert.equal(getSchemaVersion(migrationConfig.paths.database), CURRENT_SCHEMA_VERSION);
+const secondMigration = runMigrations({ config: migrationConfig });
+assert.deepEqual(secondMigration.applied, []);
+assert.equal(typeof secondMigration.backupPath, 'string');
+const rollbackPath = `${migrationDataRoot}/db/rollback.sqlite`;
+assert.throws(
+  () => runMigrations({
+    config: { ...migrationConfig, paths: { ...migrationConfig.paths, database: rollbackPath } },
+    migrations: [{ version: 1, name: 'broken', statements: ['CREATE TABLE will_rollback (id TEXT PRIMARY KEY)', 'INSERT INTO missing_table VALUES (1)'] }]
+  }),
+  (error) => error instanceof MigrationError
+    && error.code === 'ERR_MIGRATION_FAILED'
+);
+const rollbackDatabase = new DatabaseSync(rollbackPath);
+assert.equal(rollbackDatabase.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'will_rollback'").get(), undefined);
+withTransaction(rollbackDatabase, (database) => {
+  database.exec('CREATE TABLE tx_check (id TEXT PRIMARY KEY)');
+});
+assert.equal(rollbackDatabase.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tx_check'").get().name, 'tx_check');
+rollbackDatabase.close();
+rmSync(migrationDataRoot, { recursive: true, force: true });
 
 const servicePlan = getWindowsServiceInstallPlan(config);
 assert.equal(servicePlan.serviceName, 'LondiAgentOSLocalApi');
