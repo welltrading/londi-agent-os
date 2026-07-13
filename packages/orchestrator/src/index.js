@@ -18,4 +18,12 @@ export {
   isOpenRunState,
   startsRetention
 } from './state-machine.js';
+export {
+  CommandPipelineError,
+  ArtifactMismatchError,
+  executeCommandPipeline,
+  writeAtomicArtifact,
+  createSqliteCommandTransaction,
+  sha256
+} from './command-pipeline.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);

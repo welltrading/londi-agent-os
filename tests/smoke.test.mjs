@@ -15,6 +15,9 @@ import {
   RUN_STATES,
   STEP_STATES,
   StateTransitionError,
+  ArtifactMismatchError,
+  executeCommandPipeline,
+  sha256,
   applyRunTransition,
   applyStepTransition,
   assertRunTransition,
@@ -64,6 +67,66 @@ assert.throws(
   () => applyStepTransition('Ready', 'Start', { assignedAdapterReady: false }),
   StateTransitionError
 );
+const pipelineCalls = [];
+const artifactPath = './.tmp-test-data/pipeline/artifact.txt';
+const artifactContent = 'pipeline artifact content';
+const pipelineResult = executeCommandPipeline({
+  type: 'test.pipeline',
+  validate: () => pipelineCalls.push('validation'),
+  guard: () => {
+    pipelineCalls.push('guard');
+    return { from: 'Ready', event: 'Present pipeline', to: 'Awaiting Pipeline Approval' };
+  },
+  transaction: (work) => {
+    pipelineCalls.push('transaction:start');
+    work({
+      applyState: () => pipelineCalls.push('state'),
+      appendEvent: () => pipelineCalls.push('event'),
+      appendAudit: () => pipelineCalls.push('audit')
+    });
+    pipelineCalls.push('transaction:commit');
+  },
+  event: { type: 'run.state.changed', runId: 'run-pipeline', payloadRedacted: {} },
+  audit: { id: 'audit-pipeline', actor: 'test', action: 'transition', target: 'run-pipeline', result: 'ok', metadataRedacted: {} },
+  artifact: { path: artifactPath, content: artifactContent, required: true, expectedHash: sha256(artifactContent) },
+  publish: () => {
+    pipelineCalls.push('publish');
+    return ['sse:run.state.changed'];
+  }
+});
+assert.deepEqual(pipelineCalls, ['validation', 'guard', 'transaction:start', 'state', 'event', 'audit', 'transaction:commit', 'publish']);
+assert.equal(pipelineResult.ok, true);
+assert.equal(pipelineResult.artifact.hash, sha256(artifactContent));
+assert.deepEqual(pipelineResult.publications, ['sse:run.state.changed']);
+const failedPipelineCalls = [];
+assert.throws(
+  () => executeCommandPipeline({
+    type: 'test.pipeline.fail',
+    validate: () => failedPipelineCalls.push('validation'),
+    guard: () => {
+      failedPipelineCalls.push('guard');
+      throw new Error('guard failed');
+    },
+    transaction: () => failedPipelineCalls.push('transaction'),
+    publish: () => failedPipelineCalls.push('publish')
+  }),
+  (error) => error.code === 'ERR_COMMAND_PIPELINE_FAILED'
+);
+assert.deepEqual(failedPipelineCalls, ['validation', 'guard']);
+let mismatchRecorded = false;
+assert.throws(
+  () => executeCommandPipeline({
+    type: 'test.pipeline.mismatch',
+    guard: () => ({ from: 'Running', event: 'Pipeline success', to: 'Recovery Required' }),
+    transaction: (work) => work({ applyState: () => {}, appendEvent: () => {}, appendAudit: () => {} }),
+    artifact: { path: './.tmp-test-data/pipeline/bad-artifact.txt', content: 'bad', required: true, expectedHash: sha256('good') },
+    onArtifactMismatch: () => { mismatchRecorded = true; },
+    publish: () => ['should-not-publish']
+  }),
+  ArtifactMismatchError
+);
+assert.equal(mismatchRecorded, true);
+rmSync('./.tmp-test-data', { recursive: true, force: true });
 assert.equal(getHealthModel().packageName, '@londi-agent-os/local-api');
 assert.equal(getHealthModel().service, 'LondiAgentOSLocalApi');
 assert.equal(getUiBootstrapModel().packageName, '@londi-agent-os/ui');
