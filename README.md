@@ -4,7 +4,7 @@ Local-first orchestration system for running approved agent pipelines over Git w
 
 ## Current implementation slice
 
-This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest** and **E0-T03 — local configuration/data paths**.
+This repository currently covers **E0-T01 — repository/package structure**, **E0-T02 — compatibility manifest**, **E0-T03 — local configuration/data paths** and **E0-T04 — Windows Service lifecycle skeleton**.
 
 Included packages:
 
@@ -17,5 +17,6 @@ Included packages:
 - `tests` — smoke checks for the foundation.
 - `docs/compatibility.md` — supported OS/runtime/CLI/schema baseline.
 - `docs/configuration.md` — local config, data paths, ports and retention baseline.
+- `docs/windows-service.md` — local API service lifecycle and Windows service plan.
 
 Source of truth: `/a0/usr/workdir/specs/2026-07-13-londi-agent-os-execution-spec.md`.
