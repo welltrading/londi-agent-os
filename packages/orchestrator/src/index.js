@@ -58,4 +58,11 @@ export {
   compareEventOrder,
   toAuditCsv
 } from './event-store.js';
+export {
+  WorkspaceValidationError,
+  WorkspaceLockConflictError,
+  validateGitProject,
+  createInMemoryWorkspaceLockStore,
+  classifyWorkspaceValidationError
+} from './workspace-manager.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);
