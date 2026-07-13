@@ -35,4 +35,19 @@ export {
   assertFreshRevision,
   withIdempotency
 } from './idempotency.js';
+export {
+  ApprovalError,
+  StaleApprovalError,
+  ExpiredApprovalError,
+  InvalidApprovalDecisionError,
+  APPROVAL_STATES,
+  APPROVAL_DECISIONS,
+  SENSITIVE_APPROVAL_TTL_MINUTES,
+  createApprovalRequest,
+  decideApproval,
+  assertApprovalUsable,
+  invalidateApprovalOnChange,
+  hashApprovalPayload,
+  addMinutesIso
+} from './approvals.js';
 if (process.argv.includes('--build-check')) console.log(`${ORCHESTRATOR_PACKAGE} build OK`);

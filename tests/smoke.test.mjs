@@ -17,9 +17,15 @@ import {
   StateTransitionError,
   ArtifactMismatchError,
   IdempotencyConflictError,
+  ExpiredApprovalError,
+  StaleApprovalError,
   IdempotencyReplayError,
   StaleRevisionError,
   assertFreshRevision,
+  createApprovalRequest,
+  decideApproval,
+  hashApprovalPayload,
+  invalidateApprovalOnChange,
   createInMemoryIdempotencyStore,
   withIdempotency,
   executeCommandPipeline,
@@ -173,6 +179,60 @@ assert.throws(
     && error.details.expectedRevision === 1
     && error.details.actualRevision === 2
 );
+const approvalPayload = { action: 'install-package', package: 'safe-tool', version: '1.2.3' };
+const approvalRequest = createApprovalRequest({
+  id: 'approval-1',
+  kind: 'dependency',
+  scope: { runId: 'run-1', stepId: 'step-1', action: 'install-package' },
+  payload: approvalPayload,
+  revisionHash: 'revision-1',
+  actor: 'system',
+  requestedAt: '2026-01-01T00:00:00.000Z'
+});
+assert.equal(approvalRequest.payloadHash, hashApprovalPayload({ version: '1.2.3', package: 'safe-tool', action: 'install-package' }));
+assert.equal(approvalRequest.expiresAt, '2026-01-01T01:00:00.000Z');
+const approvalDecision = decideApproval(approvalRequest, {
+  actor: 'londi',
+  decision: 'approve',
+  reason: 'approved test dependency',
+  payloadHash: approvalRequest.payloadHash,
+  revisionHash: approvalRequest.revisionHash,
+  timestamp: '2026-01-01T00:05:00.000Z'
+});
+assert.equal(approvalDecision.state, 'Approved');
+assert.equal(approvalDecision.requestId, 'approval-1');
+assert.throws(
+  () => decideApproval(approvalRequest, {
+    actor: 'londi',
+    decision: 'approve',
+    payloadHash: hashApprovalPayload({ action: 'install-package', package: 'safe-tool', version: '9.9.9' }),
+    revisionHash: approvalRequest.revisionHash,
+    timestamp: '2026-01-01T00:06:00.000Z'
+  }),
+  StaleApprovalError
+);
+assert.throws(
+  () => decideApproval(approvalRequest, {
+    actor: 'londi',
+    decision: 'approve',
+    payloadHash: approvalRequest.payloadHash,
+    revisionHash: 'revision-2',
+    timestamp: '2026-01-01T00:06:00.000Z'
+  }),
+  StaleApprovalError
+);
+assert.throws(
+  () => decideApproval(approvalRequest, {
+    actor: 'londi',
+    decision: 'approve',
+    payloadHash: approvalRequest.payloadHash,
+    revisionHash: approvalRequest.revisionHash,
+    timestamp: '2026-01-01T01:00:01.000Z'
+  }),
+  ExpiredApprovalError
+);
+assert.equal(invalidateApprovalOnChange(approvalRequest, { revisionHash: 'revision-2' }).state, 'Invalidated');
+assert.equal(invalidateApprovalOnChange(approvalRequest, { payloadHash: approvalRequest.payloadHash, revisionHash: approvalRequest.revisionHash }), approvalRequest);
 rmSync('./.tmp-test-data', { recursive: true, force: true });
 assert.equal(getHealthModel().packageName, '@londi-agent-os/local-api');
 assert.equal(getHealthModel().service, 'LondiAgentOSLocalApi');
