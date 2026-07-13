@@ -11,10 +11,20 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present && node scripts/check-package-graph.mjs",
     "test": "node tests/smoke.test.mjs",
-    "check:graph": "node scripts/check-package-graph.mjs"
+    "check:graph": "node scripts/check-package-graph.mjs",
+    "lint": "node scripts/check-source-hygiene.mjs",
+    "type-check": "node scripts/check-package-graph.mjs",
+    "test:unit": "node tests/smoke.test.mjs",
+    "test:integration": "node tests/smoke.test.mjs",
+    "security:scan": "node scripts/check-source-hygiene.mjs && node packages/adapters/verify-no-active-adapters.mjs",
+    "check:windows": "node scripts/check-windows-baseline.mjs",
+    "ci": "npm run lint && npm run type-check && npm run test:unit && npm run test:integration && npm run security:scan && npm run build && npm run check:windows"
   },
   "engines": {
     "node": ">=22.0.0",
     "npm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "semver": "^7.7.2"
   }
 }
