@@ -111,6 +111,19 @@ export {
   assertCheckpointWithoutSecrets
 } from './artifact-layout.js';
 export {
+  ACCEPTANCE_GATE_ID,
+  ACCEPTANCE_APPROVAL_KIND,
+  ACCEPTANCE_DECISIONS,
+  ACCEPTANCE_REQUIRED_SECTIONS,
+  AcceptanceGateError,
+  createAcceptanceSnapshot,
+  createAcceptanceGate,
+  createAcceptancePayload,
+  decideAcceptanceGate,
+  invalidateAcceptanceOnSnapshotChange,
+  assertAcceptanceSnapshot
+} from './acceptance-gate.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
