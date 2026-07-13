@@ -5,11 +5,15 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
   WorkspaceLockConflictError,
+  WorkspaceIsolationError,
+  assertWorkspaceWriteAllowed,
   classifyWorkspaceValidationError,
   createInMemoryWorkspaceLockStore,
   createRunWorkspace,
+  createServiceAccountIsolationPolicy,
   deriveRunBranchName,
   deriveRunWorktreePath,
+  simulateWorkspaceWrite,
   validateGitProject
 } from '../packages/orchestrator/src/index.js';
 
@@ -65,6 +69,33 @@ try {
     () => createRunWorkspace({ repositoryPath: repo, targetBranch: 'main', runId: 'abcdef1234567890', dataRoot: join(root, 'data') }),
     /already exists|already registered/
   );
+
+  const vaultRoot = join(root, 'vault');
+  const systemRoot = join(root, 'system');
+  const otherWorktree = join(root, 'data', 'worktrees', 'other-run');
+  mkdirSync(vaultRoot);
+  mkdirSync(systemRoot);
+  mkdirSync(otherWorktree, { recursive: true });
+  const isolationPolicy = createServiceAccountIsolationPolicy({
+    worktreePath: manifest.worktreePath,
+    runArtifactsPath: join(root, 'data', 'runs', manifest.runId),
+    deniedRoots: [repo, vaultRoot, systemRoot, otherWorktree]
+  });
+  assert.equal(isolationPolicy.serviceAccount, 'LondiAgentOSService');
+  assert.equal(assertWorkspaceWriteAllowed({ policy: isolationPolicy, targetPath: join(manifest.worktreePath, 'src', 'agent-output.txt') }).allowed, true);
+  assert.equal(simulateWorkspaceWrite({ policy: isolationPolicy, targetPath: join(root, 'data', 'runs', manifest.runId, 'summary.md') }).serviceAccount, 'LondiAgentOSService');
+  for (const deniedPath of [
+    join(repo, 'source-change.txt'),
+    join(vaultRoot, 'private.md'),
+    join(systemRoot, 'config.ini'),
+    join(otherWorktree, 'cross-run.txt'),
+    join(root, 'outside.txt')
+  ]) {
+    assert.throws(
+      () => assertWorkspaceWriteAllowed({ policy: isolationPolicy, targetPath: deniedPath }),
+      WorkspaceIsolationError
+    );
+  }
 
   console.log('Workspace manager tests OK');
 } finally {

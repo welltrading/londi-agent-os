@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 export class WorkspaceValidationError extends Error {
   constructor(message, details = {}) {
@@ -83,6 +83,55 @@ function ensureNoExistingRefOrPath({ repositoryPath, branchName, worktreePath })
   }
 }
 
+
+export class WorkspaceIsolationError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'WorkspaceIsolationError';
+    this.code = 'ERR_WORKSPACE_ISOLATION';
+    this.details = details;
+  }
+}
+
+export function createServiceAccountIsolationPolicy({ serviceAccount = 'LondiAgentOSService', worktreePath, runArtifactsPath, deniedRoots = [] } = {}) {
+  if (!worktreePath || !runArtifactsPath) throw new WorkspaceIsolationError('Worktree and run artifact paths are required for isolation policy.');
+  const allowedWriteRoots = [resolve(worktreePath), resolve(runArtifactsPath)];
+  const deniedWriteRoots = deniedRoots.map((root) => resolve(root));
+  return Object.freeze({
+    serviceAccount,
+    allowedWriteRoots: Object.freeze(allowedWriteRoots),
+    deniedWriteRoots: Object.freeze(deniedWriteRoots),
+    rules: Object.freeze([
+      'write:allow:run-worktree',
+      'write:allow:run-artifacts',
+      'write:deny:source-repository',
+      'write:deny:vault-root',
+      'write:deny:system-folders',
+      'write:deny:other-worktrees'
+    ])
+  });
+}
+
+export function assertWorkspaceWriteAllowed({ policy, targetPath } = {}) {
+  if (!policy) throw new WorkspaceIsolationError('Isolation policy is required.');
+  const resolvedTarget = resolve(targetPath ?? '');
+  const deniedRoot = policy.deniedWriteRoots.find((root) => isPathInside(resolvedTarget, root));
+  if (deniedRoot) throw new WorkspaceIsolationError('Write target is denied by isolation policy.', { targetPath: resolvedTarget, deniedRoot });
+  const allowedRoot = policy.allowedWriteRoots.find((root) => isPathInside(resolvedTarget, root));
+  if (!allowedRoot) throw new WorkspaceIsolationError('Write target is outside run worktree/artifacts.', { targetPath: resolvedTarget, allowedRoots: policy.allowedWriteRoots });
+  return { allowed: true, targetPath: resolvedTarget, allowedRoot };
+}
+
+export function simulateWorkspaceWrite({ policy, targetPath } = {}) {
+  const decision = assertWorkspaceWriteAllowed({ policy, targetPath });
+  return Object.freeze({ ...decision, serviceAccount: policy.serviceAccount });
+}
+
+function isPathInside(targetPath, rootPath) {
+  const rel = relative(rootPath, targetPath);
+  return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/') && rel !== '..');
+}
+
 export function validateGitProject({ repositoryPath, targetBranch, runId, lockStore, allowDirty = true } = {}) {
   const checks = [];
   const resolvedRepositoryPath = repositoryPath ? resolve(repositoryPath) : undefined;
@@ -155,7 +204,7 @@ export function createInMemoryWorkspaceLockStore() {
 
 export function classifyWorkspaceValidationError(error) {
   if (error instanceof WorkspaceLockConflictError) return { status: 'Blocked', reason: 'lock-conflict', errorCode: error.code, details: error.details };
-  if (error instanceof WorkspaceValidationError || error instanceof WorkspaceLifecycleError) return { status: 'Blocked', reason: 'validation', errorCode: error.code, details: error.details };
+  if (error instanceof WorkspaceValidationError || error instanceof WorkspaceLifecycleError || error instanceof WorkspaceIsolationError) return { status: 'Blocked', reason: 'validation', errorCode: error.code, details: error.details };
   throw error;
 }
 

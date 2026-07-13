@@ -30,3 +30,14 @@ The Workspace Manager now creates deterministic run branches and worktrees:
 - Existing branch/worktree paths are never reused without verification; lifecycle creation fails with `WorkspaceLifecycleError`.
 
 E2-T02 does not implement ACL isolation, diff snapshots or cleanup retention; those are handled by later E2 tasks.
+
+## E2-T03 service account isolation baseline
+
+The Workspace Manager now exposes a service-account isolation policy model:
+
+- Default service account name: `LondiAgentOSService`.
+- Writes are allowed only under the current run worktree and current run artifacts path.
+- Writes are denied for the source repository, vault roots, system folders and other run worktrees.
+- Negative tests prove write attempts to those locations are rejected with `WorkspaceIsolationError`.
+
+This baseline models and verifies path-level isolation in the orchestrator. OS-specific Windows ACL application is deferred to the later Windows/service hardening slice.
