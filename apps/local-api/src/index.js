@@ -11,6 +11,24 @@ export function getHealthModel() {
 }
 
 export {
+  SSE_EVENTS_PATH,
+  STREAM_RESET_EVENT_TYPE,
+  SSE_HEARTBEAT_EVENT_TYPE,
+  DEFAULT_SSE_BATCH_SIZE,
+  MAX_SSE_BATCH_SIZE,
+  SseStreamError,
+  createSseStreamContract,
+  parseSseRequest,
+  replayEvents,
+  normalizeSseEvent,
+  createHeartbeatEvent,
+  createStreamResetEvent,
+  formatSseEvent,
+  createSseHeaders,
+  assertNoSecretPayload
+} from './sse-stream.js';
+
+export {
   API_VERSION,
   API_BASE_PATH,
   RESOURCE_VERSION_HEADER,
@@ -31,6 +49,7 @@ export {
 } from './rest-contracts.js';
 
 export { createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, createRequestId, sanitizeForLog };
+export { createInMemoryEventStore } from '@londi-agent-os/orchestrator';
 
 if (process.argv.includes('--build-check')) console.log(`${LOCAL_API_PACKAGE} build OK`);
 
