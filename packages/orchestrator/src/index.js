@@ -130,6 +130,14 @@ export {
   runPipelineIntegrationSuite
 } from './pipeline-integration-suite.js';
 export {
+  OBSIDIAN_CONTEXT_BROKER_VERSION,
+  OBSIDIAN_ALLOWED_EXTENSIONS,
+  ObsidianContextBrokerError,
+  createObsidianContextBroker,
+  searchObsidianContext,
+  assertCandidateInsideApprovedRoots
+} from './obsidian-context-broker.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
