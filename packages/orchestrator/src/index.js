@@ -190,6 +190,21 @@ export {
   assertSecretAlias
 } from './secret-broker.js';
 export {
+  REDACTION_PLACEHOLDER,
+  QUARANTINE_EVENT_TYPE,
+  REDACTION_SURFACES,
+  SECRET_LEAKAGE_PATTERNS,
+  RedactionQuarantineError,
+  redactSecretText,
+  redactSurface,
+  redactEndToEnd,
+  detectSecretLeak,
+  quarantineLeakedArtifact,
+  createSecurityEvent,
+  assertNoSecretLeakage,
+  runSecretLeakageCorpus
+} from './redaction-quarantine.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
