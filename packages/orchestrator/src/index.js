@@ -133,6 +133,16 @@ export {
   assertAcceptanceSnapshot
 } from './acceptance-gate.js';
 export {
+  MANUAL_MERGE_GATE_ID,
+  MANUAL_MERGE_STATUSES,
+  MANUAL_MERGE_FAILURE_REASONS,
+  ManualMergeError,
+  createManualMergeGate,
+  verifyManualMerge,
+  verifyPatchEquivalence,
+  assertNoAutomaticMergeCommand
+} from './manual-merge.js';
+export {
   TECHNICAL_RETRY_LIMIT,
   REPLACEMENT_CONTEXT_FORBIDDEN_PATTERNS,
   TechnicalRetryError,
