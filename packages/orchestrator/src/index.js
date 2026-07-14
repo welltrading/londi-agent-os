@@ -386,6 +386,22 @@ export {
   assertAcceptedRunsNotDeleted
 } from './retention-scheduler.js';
 export {
+  RELEASE_DECISION_VERSION,
+  RELEASE_DECISIONS,
+  FR_IDS,
+  NFR_IDS,
+  Q_IDS,
+  MVP_ACCEPTANCE_IDS,
+  DEFECT_SEVERITIES,
+  DEFECT_STATUSES,
+  ReleaseDecisionError,
+  createTraceabilityMatrix,
+  validateTraceabilityMatrix,
+  createDefectRegister,
+  createReleaseDecision,
+  assertReleaseGo
+} from './release-decision.js';
+export {
   ACCEPTANCE_RUN_COUNT,
   ACCEPTANCE_REQUIRED_TEMPLATES,
   ACCEPTANCE_REQUIRED_ADAPTERS,
