@@ -133,6 +133,15 @@ export {
   assertAcceptanceSnapshot
 } from './acceptance-gate.js';
 export {
+  TECHNICAL_RETRY_LIMIT,
+  REPLACEMENT_CONTEXT_FORBIDDEN_PATTERNS,
+  TechnicalRetryError,
+  createRetryDecision,
+  createAgentReplacementPlan,
+  createReconnectPlan,
+  assertReplacementContextSafe
+} from './technical-retry.js';
+export {
   RECOVERY_ACTIONS,
   RECOVERY_CHECK_STATUSES,
   RestartRecoveryError,
