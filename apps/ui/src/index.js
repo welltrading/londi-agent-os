@@ -8,6 +8,7 @@ import { createNewRunWizardState } from './new-run-wizard.js';
 import { RUN_DETAIL_SECTIONS } from './run-detail.js';
 import { HRA_SECTIONS } from './handoff-review-acceptance.js';
 import { ASM_SECTIONS } from './audit-settings-maintenance.js';
+import { UI_E2E_CORE_SCREENS } from './ui-e2e-baseline.js';
 
 export const UI_PACKAGE = '@londi-agent-os/ui';
 export const UI_SHELL_ROUTES = Object.freeze(['/', '/runs', '/approvals', '/settings']);
@@ -19,7 +20,7 @@ export function getUiBootstrapModel(options = {}) {
   const sseClient = createSseClient({ apiClient, state });
   const accessibility = createAccessibilityModel();
   validateAccessibilityModel(accessibility);
-  return Object.freeze({ packageName: UI_PACKAGE, pipelineTemplates: MVP_PIPELINE_TEMPLATES, routes: UI_SHELL_ROUTES, state, tokenProvider, apiClient, sseClient, accessibility, dashboard: createDashboardModel(), newRunWizard: createNewRunWizardState(), runDetailSections: RUN_DETAIL_SECTIONS, handoffReviewAcceptanceSections: HRA_SECTIONS, auditSettingsMaintenanceSections: ASM_SECTIONS });
+  return Object.freeze({ packageName: UI_PACKAGE, pipelineTemplates: MVP_PIPELINE_TEMPLATES, routes: UI_SHELL_ROUTES, state, tokenProvider, apiClient, sseClient, accessibility, dashboard: createDashboardModel(), newRunWizard: createNewRunWizardState(), runDetailSections: RUN_DETAIL_SECTIONS, handoffReviewAcceptanceSections: HRA_SECTIONS, auditSettingsMaintenanceSections: ASM_SECTIONS, uiE2eCoreScreens: UI_E2E_CORE_SCREENS });
 }
 
 export { createApiClient, createMemoryTokenProvider, assertUiDoesNotInvokeCli } from './api-client.js';
@@ -31,5 +32,6 @@ export { NEW_RUN_WIZARD_STEPS, NEW_RUN_WIZARD_STATUS, TRAINED_USER_APPROVAL_TARG
 export { RUN_DETAIL_EVENT_LIMIT, RUN_DETAIL_PAGE_SIZE, RUN_DETAIL_SECTIONS, RUN_DETAIL_VISUAL_TOKENS, RunDetailError, createRunDetailModel, paginateRunEvents, createStateStepper, createRunProgress, createFilteredLogs, createArtifactList, createCheckpointList, createRunDetailApiRequests, assertRunDetailAccessibility } from './run-detail.js';
 export { HRA_SECTIONS, HRA_ACTIONS, HRA_VISUAL_TOKENS, HandoffReviewAcceptanceError, createHandoffReviewAcceptanceModel, evaluateRevisionFreshness, createHandoffRevisionDiff, createReviewScreenModel, createAcceptanceScreenModel, assertHraActionAllowed, createHraApiRequests, assertHraAccessibility } from './handoff-review-acceptance.js';
 export { ASM_SECTIONS, ASM_ACTION_STATE, ASM_VISUAL_TOKENS, AuditSettingsMaintenanceError, createAuditSettingsMaintenanceModel, createAuditTimeline, createAuditExportDescriptor, createSettingsModel, createMaintenanceModel, createAsmApiRequests, assertAuditReadOnly, assertNoSecretsDisplayed, assertDisabledActionsDoNotSimulateSuccess } from './audit-settings-maintenance.js';
+export { UI_E2E_REQUIRED_TEMPLATES, UI_E2E_CORE_SCREENS, UI_E2E_WCAG_LEVEL, UiE2eBaselineError, createUiE2eBaselineScenario, createUiE2eCoreScreens, evaluateUiE2eBaseline, createReconnectScenario, createStaleRevisionScenario, createLongLogsScenario, evaluateWcagBaseline, assertUiE2eBaselinePasses } from './ui-e2e-baseline.js';
 
 if (process.argv.includes('--build-check')) console.log(`${UI_PACKAGE} build OK`);
