@@ -1,5 +1,14 @@
 import { strict as assert } from 'node:assert';
-import { createPhase2DashboardModel, assertProjectHasAllAgents, Phase2DashboardError } from '../apps/ui/src/index.js';
+import {
+  createMemoryTokenProvider,
+  createApiClient,
+  createPhase2DashboardApiRequests,
+  createPhase2DashboardModel,
+  loadPhase2DashboardFromApi,
+  writePhase2ObsidianRunSummary,
+  assertProjectHasAllAgents,
+  Phase2DashboardError
+} from '../apps/ui/src/index.js';
 
 const dashboard = createPhase2DashboardModel({
   generatedAt: '2026-07-14T18:00:00.000Z',
@@ -11,7 +20,47 @@ assert.equal(dashboard.counts.activeProjects, 1);
 assert.equal(dashboard.counts.activeSkills, 3);
 assert.equal(dashboard.counts.succeededRuns, 1);
 assert.equal(dashboard.projects[0].agentIds.includes('codex'), true);
-assert.equal(dashboard.actions.find((action) => action.id === 'write-obsidian-run-summary').path, '/api/v1/runs/obsidian-summary');
+assert.equal(dashboard.actions.find((action) => action.id === 'write-obsidian-run-summary').path, '/runs/obsidian-summary');
 assert.equal(assertProjectHasAllAgents(dashboard.projects[0]), true);
 assert.throws(() => assertProjectHasAllAgents({ id: 'x', name: 'X', agentIds: ['agent-zero'] }), Phase2DashboardError);
+
+const refreshRequests = createPhase2DashboardApiRequests({ refresh: true, projectId: 'Client AI OS' });
+assert.equal(refreshRequests.find((request) => request.id === 'load-agents').path, '/agents?refresh=true');
+assert.equal(refreshRequests.find((request) => request.id === 'upsert-project').path, '/projects/Client%20AI%20OS');
+assert.equal(refreshRequests.find((request) => request.id === 'write-obsidian-run-summary').idempotent, true);
+
+const tokenProvider = createMemoryTokenProvider('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_');
+const apiClient = createApiClient({ baseUrl: 'http://127.0.0.1:3210/api/v1', tokenProvider });
+const calls = [];
+const fetchImpl = async (url, options) => {
+  calls.push({ url, options });
+  const path = new URL(url).pathname.replace('/api/v1', '');
+  const payloads = {
+    '/agents': { data: dashboard.agents, resourceVersion: 'agents-v1' },
+    '/skills': { data: dashboard.skills, resourceVersion: 'skills-v1' },
+    '/projects': { data: dashboard.projects, resourceVersion: 'projects-v1' },
+    '/obsidian/status': { data: { available: true, targetFolder: 'Londi Agent OS/Runs/', cached: true }, resourceVersion: 'obsidian-v1' },
+    '/runs/obsidian-summary': { data: { id: 'run-2', title: 'API summary', projectId: 'client-project', status: 'succeeded', summary: 'written', artifactPath: '/vault/run-2.md' }, resourceVersion: 'run-v1' }
+  };
+  return { status: path === '/runs/obsidian-summary' ? 201 : 200, json: async () => payloads[path] };
+};
+
+const liveDashboard = await loadPhase2DashboardFromApi({ apiClient, fetchImpl, generatedAt: '2026-07-14T18:05:00.000Z', refresh: true });
+assert.equal(liveDashboard.generatedAt, '2026-07-14T18:05:00.000Z');
+assert.equal(liveDashboard.agents.length, 4);
+assert.equal(liveDashboard.projects[0].id, 'client-project');
+assert.equal(liveDashboard.obsidian.available, true);
+assert.equal(calls.some((call) => call.url === 'http://127.0.0.1:3210/api/v1/agents?refresh=true'), true);
+assert.equal(calls.every((call) => call.options.headers.authorization === 'Bearer abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_'), true);
+
+const writtenRun = await writePhase2ObsidianRunSummary({
+  apiClient,
+  fetchImpl,
+  idempotencyKey: 'idem-summary',
+  input: { id: 'run-2', title: 'API summary', projectId: 'client-project', summary: 'written' }
+});
+assert.equal(writtenRun.status, 'succeeded');
+assert.equal(calls.at(-1).options.headers['idempotency-key'], 'idem-summary');
+await assert.rejects(() => writePhase2ObsidianRunSummary({ apiClient, fetchImpl, input: { id: 'run-3' } }), Phase2DashboardError);
+
 console.log('Phase 2 dashboard tests OK');

@@ -28,7 +28,7 @@ export { createApiClient, createMemoryTokenProvider, assertUiDoesNotInvokeCli } 
 export { CONNECTION_STATES, DEFAULT_RECONNECT_POLICY, UiClientStateError, createClientState, setAuthToken, clearAuthToken, transitionConnection, recordUiEvent, computeReconnectDelay, normalizeFocusState } from './client-state.js';
 export { UiSseClientError, createSseClient } from './sse-client.js';
 export { ACCESSIBILITY_BASELINE, createAccessibilityModel, validateAccessibilityModel } from './accessibility.js';
-export { Phase2DashboardError, createPhase2DashboardModel, assertProjectHasAllAgents } from './phase2-dashboard.js';
+export { Phase2DashboardError, createPhase2DashboardApiRequests, createPhase2DashboardModel, loadPhase2DashboardFromApi, writePhase2ObsidianRunSummary, assertProjectHasAllAgents } from './phase2-dashboard.js';
 export { DASHBOARD_RUN_BUCKETS, ACTION_STATE, DashboardModelError, createDashboardModel, bucketRuns, listRunActions, evaluateActionFreshness, describeExpectedTransition, assertDashboardCountsMatchApi } from './dashboard.js';
 export { NEW_RUN_WIZARD_STEPS, NEW_RUN_WIZARD_STATUS, TRAINED_USER_APPROVAL_TARGET_SECONDS, NewRunWizardError, createNewRunWizardState, updateNewRunWizardState, evaluateWizardCompletion, evaluateWizardStep, createPipelineApprovalPreview, assertWizardCanRequestApproval, createNewRunApiRequests, estimateTrainedUserSeconds, listWizardTemplateOptions } from './new-run-wizard.js';
 export { RUN_DETAIL_EVENT_LIMIT, RUN_DETAIL_PAGE_SIZE, RUN_DETAIL_SECTIONS, RUN_DETAIL_VISUAL_TOKENS, RunDetailError, createRunDetailModel, paginateRunEvents, createStateStepper, createRunProgress, createFilteredLogs, createArtifactList, createCheckpointList, createRunDetailApiRequests, assertRunDetailAccessibility } from './run-detail.js';
