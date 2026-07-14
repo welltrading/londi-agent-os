@@ -246,6 +246,16 @@ export {
   createPreflightCheck
 } from './preflight-engine.js';
 export {
+  SECURITY_ACCEPTANCE_THREATS,
+  SECURITY_ACCEPTANCE_OUTCOMES,
+  SecurityAcceptanceError,
+  runSecurityAcceptanceSuite,
+  createSecurityAcceptanceReport,
+  normalizeSecurityCase,
+  assertSecurityAcceptancePassed,
+  detectVaultPromptInjection
+} from './security-acceptance-suite.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
