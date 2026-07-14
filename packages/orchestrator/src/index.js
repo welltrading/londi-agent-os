@@ -133,6 +133,13 @@ export {
   assertAcceptanceSnapshot
 } from './acceptance-gate.js';
 export {
+  COMPLETION_RETENTION_DAYS,
+  CompletionRetentionError,
+  completeRunAfterGateF,
+  createRetentionTrigger,
+  assertAcceptedNotCleanupEligible
+} from './completion-retention.js';
+export {
   MANUAL_MERGE_GATE_ID,
   MANUAL_MERGE_STATUSES,
   MANUAL_MERGE_FAILURE_REASONS,
