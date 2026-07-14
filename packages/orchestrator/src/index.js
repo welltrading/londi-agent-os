@@ -153,6 +153,25 @@ export {
   assertSnapshotUnaffectedBySourceChange
 } from './obsidian-context-approval.js';
 export {
+  OBSIDIAN_WRITEBACK_APPROVAL_KIND,
+  OBSIDIAN_WRITEBACK_APPROVAL_GATE_ID,
+  OBSIDIAN_WRITEBACK_DRAFT_FILENAME,
+  OBSIDIAN_WRITEBACK_ALLOWED_SECTIONS,
+  OBSIDIAN_WRITEBACK_FORBIDDEN_PATTERNS,
+  ObsidianWritebackError,
+  createObsidianWritebackDraft,
+  editObsidianWritebackDraft,
+  createObsidianWritebackApprovalGate,
+  createObsidianWritebackApprovalPayload,
+  decideObsidianWritebackApprovalGate,
+  markObsidianWritebackApproved,
+  writeObsidianApprovedDraft,
+  createConflictDraft,
+  writeObsidianWritebackDraftArtifact,
+  summarizeObsidianWritebackOutcome,
+  assertObsidianWritebackContent
+} from './obsidian-writeback.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
