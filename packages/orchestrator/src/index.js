@@ -124,6 +124,12 @@ export {
   assertAcceptanceSnapshot
 } from './acceptance-gate.js';
 export {
+  PIPELINE_INTEGRATION_SCENARIOS,
+  PipelineIntegrationSuiteError,
+  runPipelineIntegrationScenario,
+  runPipelineIntegrationSuite
+} from './pipeline-integration-suite.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
