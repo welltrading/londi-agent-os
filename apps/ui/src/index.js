@@ -4,6 +4,7 @@ import { createClientState } from './client-state.js';
 import { createSseClient } from './sse-client.js';
 import { createAccessibilityModel, validateAccessibilityModel } from './accessibility.js';
 import { createDashboardModel } from './dashboard.js';
+import { createNewRunWizardState } from './new-run-wizard.js';
 
 export const UI_PACKAGE = '@londi-agent-os/ui';
 export const UI_SHELL_ROUTES = Object.freeze(['/', '/runs', '/approvals', '/settings']);
@@ -15,7 +16,7 @@ export function getUiBootstrapModel(options = {}) {
   const sseClient = createSseClient({ apiClient, state });
   const accessibility = createAccessibilityModel();
   validateAccessibilityModel(accessibility);
-  return Object.freeze({ packageName: UI_PACKAGE, pipelineTemplates: MVP_PIPELINE_TEMPLATES, routes: UI_SHELL_ROUTES, state, tokenProvider, apiClient, sseClient, accessibility, dashboard: createDashboardModel() });
+  return Object.freeze({ packageName: UI_PACKAGE, pipelineTemplates: MVP_PIPELINE_TEMPLATES, routes: UI_SHELL_ROUTES, state, tokenProvider, apiClient, sseClient, accessibility, dashboard: createDashboardModel(), newRunWizard: createNewRunWizardState() });
 }
 
 export { createApiClient, createMemoryTokenProvider, assertUiDoesNotInvokeCli } from './api-client.js';
@@ -23,5 +24,6 @@ export { CONNECTION_STATES, DEFAULT_RECONNECT_POLICY, UiClientStateError, create
 export { UiSseClientError, createSseClient } from './sse-client.js';
 export { ACCESSIBILITY_BASELINE, createAccessibilityModel, validateAccessibilityModel } from './accessibility.js';
 export { DASHBOARD_RUN_BUCKETS, ACTION_STATE, DashboardModelError, createDashboardModel, bucketRuns, listRunActions, evaluateActionFreshness, describeExpectedTransition, assertDashboardCountsMatchApi } from './dashboard.js';
+export { NEW_RUN_WIZARD_STEPS, NEW_RUN_WIZARD_STATUS, TRAINED_USER_APPROVAL_TARGET_SECONDS, NewRunWizardError, createNewRunWizardState, updateNewRunWizardState, evaluateWizardCompletion, evaluateWizardStep, createPipelineApprovalPreview, assertWizardCanRequestApproval, createNewRunApiRequests, estimateTrainedUserSeconds, listWizardTemplateOptions } from './new-run-wizard.js';
 
 if (process.argv.includes('--build-check')) console.log(`${UI_PACKAGE} build OK`);
