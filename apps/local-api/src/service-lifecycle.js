@@ -1,8 +1,16 @@
 import { createServer } from 'node:http';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createLocalApiSecurity, writeJson } from './auth.js';
 import { createLogger, createRequestId } from './logging.js';
-import { loadDefaultLocalConfig, validateLocalConfig } from '@londi-agent-os/contracts';
+import { API_BASE_PATH, IDEMPOTENCY_KEY_HEADER, createResourceResponse } from './rest-contracts.js';
+import {
+  listPhase2Skills,
+  loadDefaultLocalConfig,
+  validateLocalConfig
+} from '@londi-agent-os/contracts';
 import { ensureApprovedDataDirectories } from '@londi-agent-os/orchestrator';
+import { createInMemoryHostConnector } from './host-connector.js';
 
 export const SERVICE_NAME = 'LondiAgentOSLocalApi';
 export const SERVICE_START_DEADLINE_MS = 30_000;
@@ -12,6 +20,13 @@ export function createServiceLifecycle(options = {}) {
   validateLocalConfig(config);
   const security = createLocalApiSecurity(options.security);
   const logger = options.logger ?? createLogger({ knownSecrets: options.knownSecrets ?? [] });
+  const hostConnector = options.hostConnector ?? createInMemoryHostConnector({
+    vaultPath: config.obsidian?.roots?.[0] ?? null,
+    mkdir: mkdirSync,
+    writeFile: writeFileSync,
+    exists: existsSync,
+    joinPath: join
+  });
 
   let server;
   const startedAt = Date.now();
@@ -32,14 +47,9 @@ export function createServiceLifecycle(options = {}) {
     state.dataDirectories = ensureApprovedDataDirectories(config);
     logger.info('service.starting', { service: SERVICE_NAME, host: state.host, port: state.port });
 
-    server = createServer((request, response) => {
+    server = createServer(async (request, response) => {
       if (!security.enforce(request, response)) return;
-      if (request.url === '/system/health') {
-        const requestId = response.getHeader('x-request-id')?.toString() || createRequestId();
-        writeJson(response, 200, { ...getHealth(), requestId });
-        return;
-      }
-      writeJson(response, 404, { error: 'not_found', requestId: response.getHeader('x-request-id') });
+      await routeRequest(request, response);
     });
 
     await new Promise((resolve, reject) => {
@@ -71,6 +81,58 @@ export function createServiceLifecycle(options = {}) {
     state.stoppedAt = new Date().toISOString();
     logger.info('service.stopped', { service: SERVICE_NAME, reason });
     return getHealth();
+  }
+
+  async function routeRequest(request, response) {
+    const requestId = response.getHeader('x-request-id')?.toString() || createRequestId();
+    const parsedUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+    const pathname = parsedUrl.pathname;
+    try {
+      if (pathname === '/system/health' || pathname === `${API_BASE_PATH}/system/health`) {
+        writeJson(response, 200, { ...getHealth(), requestId });
+        return;
+      }
+      if (request.method === 'GET' && pathname === `${API_BASE_PATH}/agents`) {
+        const data = hostConnector.getAgentsStatus({ force: parsedUrl.searchParams.get('refresh') === 'true' });
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('agents', data) });
+        return;
+      }
+      if (request.method === 'GET' && pathname === `${API_BASE_PATH}/skills`) {
+        const data = listPhase2Skills();
+        writeResource(response, { requestId, data, resourceVersion: 'phase2-skills-v1' });
+        return;
+      }
+      if (request.method === 'GET' && pathname === `${API_BASE_PATH}/projects`) {
+        const data = hostConnector.listProjects();
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('projects', data), page: { limit: 50, total: data.length } });
+        return;
+      }
+      const projectMatch = pathname.match(new RegExp(`^${API_BASE_PATH}/projects/([^/]+)$`));
+      if (request.method === 'PUT' && projectMatch) {
+        requireIdempotency(request);
+        const body = await readJsonBody(request);
+        const data = hostConnector.upsertProject({ ...body, id: decodeURIComponent(projectMatch[1]) });
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('project', data) });
+        return;
+      }
+      if (request.method === 'GET' && pathname === `${API_BASE_PATH}/obsidian/status`) {
+        const data = hostConnector.getObsidianStatus({ force: parsedUrl.searchParams.get('refresh') === 'true' });
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('obsidian', data) });
+        return;
+      }
+      if (request.method === 'POST' && pathname === `${API_BASE_PATH}/runs/obsidian-summary`) {
+        requireIdempotency(request);
+        const body = await readJsonBody(request);
+        const data = hostConnector.runObsidianSummary(body);
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('run', data), statusCode: 201 });
+        return;
+      }
+      writeJson(response, 404, { error: 'not_found', requestId });
+    } catch (error) {
+      const statusCode = error.statusCode ?? (error.code === 'ERR_IDEMPOTENCY_REQUIRED' ? 400 : error.name?.includes('Contract') ? 400 : 500);
+      logger.error('request.failed', { path: pathname, error: error.message }, { requestId });
+      writeJson(response, statusCode, { error: error.code ?? 'internal', message: error.message, requestId });
+    }
   }
 
   function getHealth() {
@@ -114,4 +176,40 @@ export function getWindowsServiceInstallPlan(config = loadDefaultLocalConfig()) 
     healthEndpoint: `http://127.0.0.1:${config.ports.localApi}/system/health`,
     startupDeadlineMs: SERVICE_START_DEADLINE_MS
   };
+}
+
+function writeResource(response, { requestId, data, resourceVersion, page = null, statusCode = 200 }) {
+  const resource = createResourceResponse({ requestId, data, resourceVersion, page, statusCode });
+  for (const [key, value] of Object.entries(resource.headers)) response.setHeader(key, value);
+  writeJson(response, resource.statusCode, resource.body);
+}
+
+function requireIdempotency(request) {
+  if (!readHeader(request, IDEMPOTENCY_KEY_HEADER)) {
+    const error = new Error('Idempotency key is required for write commands.');
+    error.code = 'ERR_IDEMPOTENCY_REQUIRED';
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+function readHeader(request, name) {
+  const lower = name.toLowerCase();
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (key.toLowerCase() === lower) return Array.isArray(value) ? value[0] : value;
+  }
+  return null;
+}
+
+async function readJsonBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  return raw ? JSON.parse(raw) : {};
+}
+
+function phase2ResourceVersion(prefix, data) {
+  const size = Array.isArray(data) ? data.length : 1;
+  const stamp = Array.isArray(data) ? data.map((item) => item.lastUpdated ?? item.updatedAt ?? item.id).join('|') : data?.lastUpdated ?? data?.updatedAt ?? data?.id ?? 'v1';
+  return `${prefix}-${size}-${Buffer.from(String(stamp)).toString('base64url').slice(0, 16)}`;
 }

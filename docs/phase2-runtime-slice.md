@@ -88,3 +88,16 @@ Targeted tests:
 - `node tests/host-connector.test.mjs`
 - `node tests/phase2-dashboard.test.mjs`
 - `node tests/rest-contracts.test.mjs`
+
+## Live Local API behavior
+
+The Local API service now routes the Phase 2 endpoints through the configured HostConnector after authentication:
+
+- `GET /api/v1/agents?refresh=true` returns four agent cards.
+- `GET /api/v1/skills` returns the static Phase 2 Skill Registry.
+- `GET /api/v1/projects` returns ProjectWorkspace records.
+- `PUT /api/v1/projects/{projectId}` upserts a ProjectWorkspace and requires `Idempotency-Key`.
+- `GET /api/v1/obsidian/status?refresh=true` returns vault availability from HostConnector.
+- `POST /api/v1/runs/obsidian-summary` runs the minimal Obsidian summary write and requires `Idempotency-Key`.
+
+The service keeps UI -> Local API -> HostConnector boundaries intact. It does not add direct UI filesystem or CLI access.
