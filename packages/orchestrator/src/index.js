@@ -222,6 +222,20 @@ export {
   assertHostname
 } from './network-grants.js';
 export {
+  TOOL_CATALOG_SCHEMA_VERSION,
+  TRUSTED_TOOL_SOURCES,
+  DEPENDENCY_DECISIONS,
+  ToolCatalogError,
+  createToolCatalog,
+  normalizeToolEntry,
+  createToolCatalogFromPackageLock,
+  evaluateDependencyPolicy,
+  assertDependencyInstallAllowed,
+  assertCacheReadOnly,
+  createDependencyApprovalPayload,
+  checksumText
+} from './tool-catalog.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
