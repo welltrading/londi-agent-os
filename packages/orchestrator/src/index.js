@@ -205,6 +205,23 @@ export {
   runSecretLeakageCorpus
 } from './redaction-quarantine.js';
 export {
+  NETWORK_GRANT_TTL_MINUTES,
+  NETWORK_GRANT_STATUSES,
+  EXTERNAL_EFFECT_STATES,
+  NetworkGrantError,
+  createNetworkGrant,
+  createNetworkAllowlist,
+  assertNetworkAllowed,
+  assertNetworkGrantUsable,
+  classifyExternalEffect,
+  assertReplayAllowedForExternalEffect,
+  recordNetworkAttempt,
+  createNetworkApprovalPayload,
+  revokeNetworkGrant,
+  expireNetworkGrant,
+  assertHostname
+} from './network-grants.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
