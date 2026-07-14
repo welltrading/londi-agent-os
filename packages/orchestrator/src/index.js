@@ -111,6 +111,15 @@ export {
   assertCheckpointWithoutSecrets
 } from './artifact-layout.js';
 export {
+  CHECKPOINT_REASONS,
+  SAFE_SHUTDOWN_TIMEOUT_MS,
+  CheckpointSchedulerError,
+  createCheckpointRecord,
+  writeCheckpointArtifact,
+  createCheckpointScheduler,
+  runSafeShutdown
+} from './checkpoint-scheduler.js';
+export {
   ACCEPTANCE_GATE_ID,
   ACCEPTANCE_APPROVAL_KIND,
   ACCEPTANCE_DECISIONS,
