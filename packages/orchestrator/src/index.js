@@ -304,6 +304,19 @@ export {
   detectVaultPromptInjection
 } from './security-acceptance-suite.js';
 export {
+  RESTORE_WORKFLOW_VERSION,
+  RESTORE_STATES,
+  RESTORE_MAX_BYTES,
+  RESTORE_MAX_DURATION_MS,
+  RestoreWorkflowError,
+  createRestorePlan,
+  createPreRestoreSnapshot,
+  executeRestorePlan,
+  verifyRestoredHealth,
+  rollbackRestore,
+  assertRestoreBlockedWithActiveRuns
+} from './restore-workflow.js';
+export {
   BACKUP_MANAGER_VERSION,
   BACKUP_DAILY_RETENTION,
   BACKUP_WEEKLY_RETENTION,
