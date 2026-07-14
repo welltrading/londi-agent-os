@@ -304,6 +304,14 @@ export {
   detectVaultPromptInjection
 } from './security-acceptance-suite.js';
 export {
+  FAULT_INJECTION_SCENARIOS,
+  FAULT_EXPECTED_OUTCOMES,
+  FaultInjectionSuiteError,
+  runFaultInjectionScenario,
+  runFaultInjectionSuite,
+  validateFaultScenarioResult
+} from './fault-injection-suite.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
