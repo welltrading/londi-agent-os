@@ -138,6 +138,21 @@ export {
   assertCandidateInsideApprovedRoots
 } from './obsidian-context-broker.js';
 export {
+  OBSIDIAN_CONTEXT_APPROVAL_KIND,
+  OBSIDIAN_CONTEXT_APPROVAL_GATE_ID,
+  OBSIDIAN_CONTEXT_SNAPSHOT_FILENAME,
+  ObsidianContextApprovalError,
+  createContextSelection,
+  createContextApprovalPayload,
+  createContextApprovalGate,
+  decideContextApprovalGate,
+  createReadOnlyContextSnapshot,
+  writeContextSnapshotArtifact,
+  createAgentContextInjection,
+  invalidateContextApprovalOnRefresh,
+  assertSnapshotUnaffectedBySourceChange
+} from './obsidian-context-approval.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
