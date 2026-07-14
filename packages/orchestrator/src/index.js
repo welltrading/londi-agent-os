@@ -133,6 +133,19 @@ export {
   assertAcceptanceSnapshot
 } from './acceptance-gate.js';
 export {
+  RECOVERY_ACTIONS,
+  RECOVERY_CHECK_STATUSES,
+  RestartRecoveryError,
+  createRecoveryConsistencyReport,
+  verifyCheckpointForRecovery,
+  verifyArtifactManifestForRecovery,
+  verifyWorkspaceForRecovery,
+  verifyProcessSnapshotForRecovery,
+  verifyExternalEffectsForRecovery,
+  createRecoveryActionGuards,
+  assertRecoveryActionAvailable
+} from './restart-recovery.js';
+export {
   PIPELINE_INTEGRATION_SCENARIOS,
   PipelineIntegrationSuiteError,
   runPipelineIntegrationScenario,
