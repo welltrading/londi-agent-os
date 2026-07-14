@@ -304,6 +304,19 @@ export {
   detectVaultPromptInjection
 } from './security-acceptance-suite.js';
 export {
+  PERFORMANCE_SCALE_VERSION,
+  PERFORMANCE_TARGETS,
+  PerformanceScaleValidationError,
+  percentile,
+  evaluatePerformanceTargets,
+  createScaleDataset,
+  createLogRotationPolicy,
+  rotateLogIfNeeded,
+  createRestoreDrillDataset,
+  createRestoreDrillReport,
+  createPerformanceValidationReport
+} from './performance-scale-validation.js';
+export {
   STABLE_UPDATE_VERSION,
   STABLE_UPDATE_STATES,
   STABLE_UPDATE_MIN_HEALTHY_VERSIONS,
