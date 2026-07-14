@@ -172,6 +172,24 @@ export {
   assertObsidianWritebackContent
 } from './obsidian-writeback.js';
 export {
+  SECRET_GRANT_TTL_MINUTES,
+  SECRET_GRANT_STATUSES,
+  SECRET_VALUE_PLACEHOLDER,
+  SecretBrokerError,
+  createInMemoryCredentialManager,
+  createWindowsCredentialManager,
+  createSecretGrant,
+  assertGrantValid,
+  issueSecretGrant,
+  injectGrantedSecret,
+  createGrantCleanup,
+  revokeSecretGrant,
+  expireSecretGrant,
+  redactGrantForAudit,
+  assertSecretNotPersisted,
+  assertSecretAlias
+} from './secret-broker.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
