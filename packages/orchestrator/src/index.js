@@ -304,6 +304,22 @@ export {
   detectVaultPromptInjection
 } from './security-acceptance-suite.js';
 export {
+  STABLE_UPDATE_VERSION,
+  STABLE_UPDATE_STATES,
+  STABLE_UPDATE_MIN_HEALTHY_VERSIONS,
+  STABLE_UPDATE_CHECK_CADENCE,
+  StableUpdateError,
+  createWeeklyUpdateCheck,
+  createStableUpdatePlan,
+  createPreUpdateSnapshot,
+  installSideBySide,
+  runUpdateSmokeTests,
+  atomicSwitchUpdate,
+  rollbackStableUpdate,
+  verifyStableVersions,
+  assertUpdateBlockedWithActiveRuns
+} from './stable-update.js';
+export {
   RESTORE_WORKFLOW_VERSION,
   RESTORE_STATES,
   RESTORE_MAX_BYTES,
