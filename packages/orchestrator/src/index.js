@@ -386,6 +386,15 @@ export {
   assertAcceptedRunsNotDeleted
 } from './retention-scheduler.js';
 export {
+  ACCEPTANCE_RUN_COUNT,
+  ACCEPTANCE_REQUIRED_TEMPLATES,
+  ACCEPTANCE_REQUIRED_ADAPTERS,
+  AcceptanceRunsError,
+  runFiveAcceptanceRuns,
+  createAcceptanceRunsReport,
+  assertAcceptanceRunsReport
+} from './acceptance-runs.js';
+export {
   FAULT_INJECTION_SCENARIOS,
   FAULT_EXPECTED_OUTCOMES,
   FaultInjectionSuiteError,
