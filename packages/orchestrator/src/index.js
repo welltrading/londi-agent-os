@@ -294,6 +294,19 @@ export {
   createPreflightCheck
 } from './preflight-engine.js';
 export {
+  SECURITY_HARDENING_VERSION,
+  SECURITY_BLOCKING_SEVERITIES,
+  SECURITY_ALLOWED_LOCAL_BIND,
+  SECURITY_REQUIRED_TOKEN_BITS,
+  SECURITY_REQUIRED_CORS_MODE,
+  SecurityHardeningError,
+  validateLocalSecurityPosture,
+  scanSecretCorpus,
+  evaluateDependencyScan,
+  createFinalLeakageScanReport,
+  runFinalSecurityHardening
+} from './security-hardening.js';
+export {
   SECURITY_ACCEPTANCE_THREATS,
   SECURITY_ACCEPTANCE_OUTCOMES,
   SecurityAcceptanceError,
