@@ -236,6 +236,16 @@ export {
   checksumText
 } from './tool-catalog.js';
 export {
+  PREFLIGHT_STATUSES,
+  PREFLIGHT_CHECK_STATUSES,
+  PREFLIGHT_MIN_FREE_BYTES,
+  PreflightEngineError,
+  runFullPreflight,
+  summarizePreflightStatus,
+  assertPreflightCanStart,
+  createPreflightCheck
+} from './preflight-engine.js';
+export {
   EventStoreError,
   AuditAppendOnlyError,
   createInMemoryEventStore,
