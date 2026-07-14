@@ -10,6 +10,26 @@ export function getHealthModel() {
   return { packageName: LOCAL_API_PACKAGE, ...service.getHealth(), templates: listSupportedPipelineTemplates() };
 }
 
+export {
+  API_VERSION,
+  API_BASE_PATH,
+  RESOURCE_VERSION_HEADER,
+  IDEMPOTENCY_KEY_HEADER,
+  DEFAULT_PAGE_LIMIT,
+  MAX_PAGE_LIMIT,
+  ERROR_CODES,
+  REST_ENDPOINTS,
+  RestContractError,
+  listRestEndpoints,
+  findRestEndpoint,
+  assertRestRequestContract,
+  createResourceResponse,
+  normalizePagination,
+  createRestError,
+  mapDomainErrorToRestError,
+  validateRestContracts
+} from './rest-contracts.js';
+
 export { createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, createRequestId, sanitizeForLog };
 
 if (process.argv.includes('--build-check')) console.log(`${LOCAL_API_PACKAGE} build OK`);

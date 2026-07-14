@@ -4,6 +4,9 @@ export const REDACTION_PLACEHOLDER = '[REDACTED]';
 export const LOG_SEVERITIES = Object.freeze(['debug', 'info', 'warn', 'error', 'security']);
 
 const CREDENTIAL_PATTERNS = [
+  /sk-[A-Za-z0-9_-]{8,}/g,
+  /ghp_[A-Za-z0-9]{20,}/g,
+  /xox[baprs]-[A-Za-z0-9-]{20,}/g,
   /Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi,
   /(token|password|secret|credential|api[_-]?key)=([^\s&]+)/gi,
   /([A-Za-z0-9_-]{43,})/g
