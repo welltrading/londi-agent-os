@@ -69,5 +69,6 @@ Included packages:
 - `docs/runbook.md` — install/start/stop, diagnostics, recovery, backup/restore, update/rollback, cleanup and known limitations.
 - `docs/acceptance-runs.md` — five consecutive acceptance runs report requirements and coverage.
 - `docs/release-decision.md` — FR/NFR/Q/A traceability, defect policy and explicit Go/No-Go decision.
+- `docs/mvp-skeleton-completion-summary.md` — final MVP skeleton completion summary and evidence index.
 
 Source of truth: `/a0/usr/workdir/specs/2026-07-13-londi-agent-os-execution-spec.md`.
