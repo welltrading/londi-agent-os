@@ -25,5 +25,29 @@ export {
   loadDefaultLocalConfig,
   validateLocalConfig
 } from './configuration.js';
+export {
+  OBSIDIAN_RUN_SUMMARY_TARGET_FOLDER,
+  PHASE2_ACTIVE_SKILL_IDS,
+  PHASE2_AGENT_CATALOG,
+  PHASE2_AGENT_IDS,
+  PHASE2_AGENT_STATUSES,
+  PHASE2_PROJECT_STATUSES,
+  PHASE2_SKILL_IDS,
+  PHASE2_SKILL_REGISTRY,
+  PHASE2_USAGE_MODES,
+  PHASE2_USAGE_SOURCES,
+  PHASE2_USAGE_UNITS,
+  Phase2RuntimeContractError,
+  createAgentCard,
+  createMinimalRun,
+  createObsidianRunSummaryFilename,
+  createProjectWorkspace,
+  createRunSummaryInput,
+  listPhase2AgentCards,
+  listPhase2Skills,
+  normalizeAgentUsage,
+  renderRunSummaryMarkdown,
+  validatePhase2RuntimeContracts
+} from './phase2-runtime.js';
 
 if (process.argv.includes('--build-check')) console.log(`${CONTRACTS_PACKAGE} build OK`);

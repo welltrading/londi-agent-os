@@ -49,6 +49,7 @@ export {
 } from './rest-contracts.js';
 
 export { createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, createRequestId, sanitizeForLog };
+export { HOST_CONNECTOR_CACHE_TTL_MS, HostConnectorError, createInMemoryHostConnector } from './host-connector.js';
 export { createInMemoryEventStore } from '@londi-agent-os/orchestrator';
 
 if (process.argv.includes('--build-check')) console.log(`${LOCAL_API_PACKAGE} build OK`);

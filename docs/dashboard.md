@@ -9,3 +9,12 @@ The UI dashboard model groups local API snapshots into active runs, waiting appr
 - Stale actions are marked `stale` and require reload before execution.
 - Every action exposes an expected transition before the user acts.
 - Needs Attention actions expose retry, replace-agent, and stop affordances.
+
+
+## Phase 2 live dashboard slice
+
+Phase 2 adds a live dashboard model alongside the MVP dashboard buckets. The model displays four agent cards, active project workspaces, active skills, Obsidian status, and the minimal Run Summary action.
+
+Project-based work is represented by `ProjectWorkspace`: every project can bind Agent Zero, Codex, Claude Code, Hermes, and the active Phase 2 skills.
+
+The UI must call Local API/HostConnector contracts only; it must not call local CLIs or write Obsidian files directly.
