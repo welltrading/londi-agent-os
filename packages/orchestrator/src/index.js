@@ -304,6 +304,21 @@ export {
   detectVaultPromptInjection
 } from './security-acceptance-suite.js';
 export {
+  BACKUP_MANAGER_VERSION,
+  BACKUP_DAILY_RETENTION,
+  BACKUP_WEEKLY_RETENTION,
+  BACKUP_MODES,
+  BACKUP_ALLOWED_KINDS,
+  BackupManagerError,
+  createBackupManifest,
+  writeBackup,
+  verifyBackupIntegrity,
+  selectBackupSources,
+  createBackupRetentionPlan,
+  assertBackupExcludesSecretsAndCode,
+  listBackupDirectories
+} from './backup-manager.js';
+export {
   RETENTION_SCHEDULER_ID,
   AUDIT_RETENTION_DAYS,
   TERMINAL_RETENTION_DAYS,
