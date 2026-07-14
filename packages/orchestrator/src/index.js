@@ -304,6 +304,18 @@ export {
   detectVaultPromptInjection
 } from './security-acceptance-suite.js';
 export {
+  RETENTION_SCHEDULER_ID,
+  AUDIT_RETENTION_DAYS,
+  TERMINAL_RETENTION_DAYS,
+  COMPLETED_RETENTION_DAYS,
+  RetentionSchedulerError,
+  createRetentionSchedulerRun,
+  createDailyRetentionSchedule,
+  createRetentionAuditEntry,
+  createAuditRetentionPlan,
+  assertAcceptedRunsNotDeleted
+} from './retention-scheduler.js';
+export {
   FAULT_INJECTION_SCENARIOS,
   FAULT_EXPECTED_OUTCOMES,
   FaultInjectionSuiteError,
