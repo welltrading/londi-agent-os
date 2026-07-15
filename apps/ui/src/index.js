@@ -4,7 +4,7 @@ import { createClientState } from './client-state.js';
 import { createSseClient } from './sse-client.js';
 import { createAccessibilityModel, validateAccessibilityModel } from './accessibility.js';
 import { createDashboardModel } from './dashboard.js';
-import { createPhase2DashboardModel } from './phase2-dashboard.js';
+import { createPhase2DashboardModel, createPhase2DashboardRuntime } from './phase2-dashboard.js';
 import { createNewRunWizardState } from './new-run-wizard.js';
 import { RUN_DETAIL_SECTIONS } from './run-detail.js';
 import { HRA_SECTIONS } from './handoff-review-acceptance.js';
@@ -21,14 +21,15 @@ export function getUiBootstrapModel(options = {}) {
   const sseClient = createSseClient({ apiClient, state });
   const accessibility = createAccessibilityModel();
   validateAccessibilityModel(accessibility);
-  return Object.freeze({ packageName: UI_PACKAGE, pipelineTemplates: MVP_PIPELINE_TEMPLATES, routes: UI_SHELL_ROUTES, state, tokenProvider, apiClient, sseClient, accessibility, dashboard: createDashboardModel(), phase2Dashboard: createPhase2DashboardModel({ agents: listPhase2AgentCards(), skills: listPhase2Skills() }), newRunWizard: createNewRunWizardState(), runDetailSections: RUN_DETAIL_SECTIONS, handoffReviewAcceptanceSections: HRA_SECTIONS, auditSettingsMaintenanceSections: ASM_SECTIONS, uiE2eCoreScreens: UI_E2E_CORE_SCREENS });
+  const phase2DashboardRuntime = createPhase2DashboardRuntime({ apiClient, fetchImpl: options.fetchImpl, now: options.now });
+  return Object.freeze({ packageName: UI_PACKAGE, pipelineTemplates: MVP_PIPELINE_TEMPLATES, routes: UI_SHELL_ROUTES, state, tokenProvider, apiClient, sseClient, accessibility, dashboard: createDashboardModel(), phase2Dashboard: createPhase2DashboardModel({ agents: listPhase2AgentCards(), skills: listPhase2Skills() }), phase2DashboardRuntime, newRunWizard: createNewRunWizardState(), runDetailSections: RUN_DETAIL_SECTIONS, handoffReviewAcceptanceSections: HRA_SECTIONS, auditSettingsMaintenanceSections: ASM_SECTIONS, uiE2eCoreScreens: UI_E2E_CORE_SCREENS });
 }
 
 export { createApiClient, createMemoryTokenProvider, assertUiDoesNotInvokeCli } from './api-client.js';
 export { CONNECTION_STATES, DEFAULT_RECONNECT_POLICY, UiClientStateError, createClientState, setAuthToken, clearAuthToken, transitionConnection, recordUiEvent, computeReconnectDelay, normalizeFocusState } from './client-state.js';
 export { UiSseClientError, createSseClient } from './sse-client.js';
 export { ACCESSIBILITY_BASELINE, createAccessibilityModel, validateAccessibilityModel } from './accessibility.js';
-export { Phase2DashboardError, createPhase2DashboardApiRequests, createPhase2DashboardModel, createPhase2DashboardViewModel, loadPhase2DashboardFromApi, writePhase2ObsidianRunSummary, assertProjectHasAllAgents } from './phase2-dashboard.js';
+export { Phase2DashboardError, createPhase2DashboardApiRequests, createPhase2DashboardModel, createPhase2DashboardRuntime, createPhase2DashboardViewModel, loadPhase2DashboardFromApi, writePhase2ObsidianRunSummary, assertProjectHasAllAgents } from './phase2-dashboard.js';
 export { DASHBOARD_RUN_BUCKETS, ACTION_STATE, DashboardModelError, createDashboardModel, bucketRuns, listRunActions, evaluateActionFreshness, describeExpectedTransition, assertDashboardCountsMatchApi } from './dashboard.js';
 export { NEW_RUN_WIZARD_STEPS, NEW_RUN_WIZARD_STATUS, TRAINED_USER_APPROVAL_TARGET_SECONDS, NewRunWizardError, createNewRunWizardState, updateNewRunWizardState, evaluateWizardCompletion, evaluateWizardStep, createPipelineApprovalPreview, assertWizardCanRequestApproval, createNewRunApiRequests, estimateTrainedUserSeconds, listWizardTemplateOptions } from './new-run-wizard.js';
 export { RUN_DETAIL_EVENT_LIMIT, RUN_DETAIL_PAGE_SIZE, RUN_DETAIL_SECTIONS, RUN_DETAIL_VISUAL_TOKENS, RunDetailError, createRunDetailModel, paginateRunEvents, createStateStepper, createRunProgress, createFilteredLogs, createArtifactList, createCheckpointList, createRunDetailApiRequests, assertRunDetailAccessibility } from './run-detail.js';

@@ -4,6 +4,7 @@ import {
   createApiClient,
   createPhase2DashboardApiRequests,
   createPhase2DashboardModel,
+  createPhase2DashboardRuntime,
   createPhase2DashboardViewModel,
   loadPhase2DashboardFromApi,
   writePhase2ObsidianRunSummary,
@@ -76,5 +77,28 @@ const writtenRun = await writePhase2ObsidianRunSummary({
 assert.equal(writtenRun.status, 'succeeded');
 assert.equal(calls.at(-1).options.headers['idempotency-key'], 'idem-summary');
 await assert.rejects(() => writePhase2ObsidianRunSummary({ apiClient, fetchImpl, input: { id: 'run-3' } }), Phase2DashboardError);
+
+const runtimeClock = ['2026-07-14T18:10:00.000Z', '2026-07-14T18:11:00.000Z', '2026-07-14T18:12:00.000Z', '2026-07-14T18:13:00.000Z'];
+const runtime = createPhase2DashboardRuntime({
+  apiClient,
+  fetchImpl,
+  requestIdPrefix: 'phase2-runtime-test',
+  now: () => runtimeClock.shift() ?? '2026-07-14T18:14:00.000Z'
+});
+assert.equal(runtime.snapshot().cachedLabel, 'fresh');
+const runtimeLoaded = await runtime.load();
+assert.equal(runtimeLoaded.obsidianLabel, 'Obsidian available');
+assert.equal(runtimeLoaded.agents.length, 4);
+const runtimeRefreshed = await runtime.refresh();
+assert.equal(runtimeRefreshed.cachedLabel, 'cached');
+assert.equal(calls.some((call) => call.url === 'http://127.0.0.1:3210/api/v1/obsidian/status?refresh=true'), true);
+const runtimeWrite = await runtime.writeRunSummary({
+  idempotencyKey: 'idem-runtime-summary',
+  input: { id: 'run-2', title: 'API summary', projectId: 'client-project', summary: 'written' }
+});
+assert.equal(runtimeWrite.run.id, 'run-2');
+assert.equal(runtimeWrite.dashboard.runs.find((run) => run.id === 'run-2').tone, 'green');
+assert.equal(runtimeWrite.dashboard.metrics.find((item) => item.id === 'runs').value, 1);
+assert.equal(calls.at(-1).options.headers['x-request-id'], 'phase2-runtime-test-run-summary');
 
 console.log('Phase 2 dashboard tests OK');

@@ -70,6 +70,32 @@ export function createPhase2DashboardViewModel(model = createPhase2DashboardMode
   });
 }
 
+export function createPhase2DashboardRuntime({ apiClient, fetchImpl = globalThis.fetch, now = () => new Date().toISOString(), requestIdPrefix = 'phase2-dashboard' } = {}) {
+  if (!apiClient || typeof apiClient.createRequest !== 'function') throw new Phase2DashboardError('Phase 2 dashboard runtime requires an API client.', { missing: 'apiClient' });
+  if (typeof fetchImpl !== 'function') throw new Phase2DashboardError('Phase 2 dashboard runtime requires a fetch implementation.', { missing: 'fetch' });
+  if (typeof now !== 'function') throw new Phase2DashboardError('Phase 2 dashboard runtime requires a clock function.', { missing: 'now' });
+
+  let dashboard = createPhase2DashboardModel({ generatedAt: now() });
+
+  return Object.freeze({
+    snapshot() {
+      return createPhase2DashboardViewModel(dashboard);
+    },
+    async load({ refresh = false } = {}) {
+      dashboard = await loadPhase2DashboardFromApi({ apiClient, fetchImpl, requestIdPrefix, generatedAt: now(), refresh });
+      return createPhase2DashboardViewModel(dashboard);
+    },
+    async refresh() {
+      return this.load({ refresh: true });
+    },
+    async writeRunSummary({ input, idempotencyKey, requestId = `${requestIdPrefix}-run-summary` } = {}) {
+      const run = await writePhase2ObsidianRunSummary({ apiClient, fetchImpl, input, idempotencyKey, requestId });
+      dashboard = createPhase2DashboardModel({ ...dashboard, runs: upsertRun(dashboard.runs, run), lastUpdated: run.lastUpdated ?? now() });
+      return deepFreeze({ run, dashboard: createPhase2DashboardViewModel(dashboard) });
+    }
+  });
+}
+
 export function createPhase2DashboardApiRequests({ refresh = false, projectId = '{projectId}' } = {}) {
   return Object.freeze([
     { id: 'load-agents', label: 'Load agent status / usage', method: 'GET', path: `/agents${refresh ? '?refresh=true' : ''}` },
@@ -139,6 +165,13 @@ function toneForAgentStatus(status) {
 
 function toneForRunStatus(status) {
   return { idle: 'neutral', running: 'blue', succeeded: 'green', failed: 'red' }[status] ?? 'neutral';
+}
+
+function upsertRun(runs, run) {
+  const normalizedRun = createMinimalRun(run);
+  const nextRuns = runs.filter((item) => item.id !== normalizedRun.id);
+  nextRuns.push(normalizedRun);
+  return nextRuns;
 }
 
 function deepFreeze(value) {

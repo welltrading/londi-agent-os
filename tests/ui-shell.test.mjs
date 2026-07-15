@@ -20,6 +20,9 @@ const bootstrap = getUiBootstrapModel({ token: 'abcdefghijklmnopqrstuvwxyzABCDEF
 assert.equal(bootstrap.packageName, '@londi-agent-os/ui');
 assert.deepEqual(bootstrap.routes, ['/', '/runs', '/approvals', '/settings']);
 assert.equal(bootstrap.accessibility.colorOnlyStatus, false);
+assert.equal(typeof bootstrap.phase2DashboardRuntime.load, 'function');
+assert.equal(bootstrap.phase2DashboardRuntime.snapshot().title, 'Londi Agent OS');
+assert.equal(bootstrap.phase2DashboardRuntime.snapshot().agents.length, 4);
 assert.equal(validateAccessibilityModel(createAccessibilityModel()), true);
 
 const state = createClientState();

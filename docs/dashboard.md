@@ -18,3 +18,9 @@ Phase 2 adds a live dashboard model alongside the MVP dashboard buckets. The mod
 Project-based work is represented by `ProjectWorkspace`: every project can bind Agent Zero, Codex, Claude Code, Hermes, and the active Phase 2 skills.
 
 The UI must call Local API/HostConnector contracts only; it must not call local CLIs or write Obsidian files directly.
+
+`getUiBootstrapModel()` exposes a `phase2DashboardRuntime` controller. It starts from a local snapshot and performs Local API calls only when the UI explicitly invokes `load()`, `refresh()`, or `writeRunSummary()`.
+
+- `load()` fetches agents, skills, projects, and Obsidian status.
+- `refresh()` repeats the load with the refresh flag for agent/usage and Obsidian status.
+- `writeRunSummary()` posts the minimal run summary to Local API and updates the dashboard view model from the returned run.
