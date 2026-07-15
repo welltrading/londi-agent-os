@@ -156,6 +156,53 @@ export function createPhase2DashboardScreen({ controller } = {}) {
   });
 }
 
+export function createPhase2DashboardShellModel(screen = createPhase2DashboardScreenModel()) {
+  const model = screen?.screenId === 'phase2-dashboard' ? screen : createPhase2DashboardScreenModel(screen);
+  const metrics = model.sections.find((item) => item.id === 'metrics')?.items ?? [];
+  const contentSections = model.sections.filter((item) => item.id !== 'metrics').map((item) => ({
+    id: item.id,
+    title: item.title,
+    itemCount: item.items.length,
+    empty: item.items.length === 0,
+    items: item.items
+  }));
+  return deepFreeze({
+    shellId: 'phase2-dashboard-shell',
+    route: '/',
+    title: model.title,
+    subtitle: model.subtitle,
+    header: {
+      title: model.title,
+      subtitle: model.subtitle,
+      statusLabel: model.status.actionLabel,
+      cachedLabel: model.status.cachedLabel,
+      lastUpdated: model.status.lastUpdated,
+      obsidianLabel: model.status.obsidianLabel,
+      obsidianTone: model.status.obsidianTone
+    },
+    alerts: model.status.error ? [{ id: 'runtime-error', tone: 'red', message: model.status.error }] : [],
+    metricCards: metrics.map((item) => ({ id: item.id, label: item.label, value: item.value, tone: item.tone })),
+    toolbar: {
+      ariaLive: model.ariaLive,
+      buttons: model.buttons.map((button) => ({
+        id: button.id,
+        label: button.label,
+        disabled: button.disabled,
+        loading: button.loading,
+        description: button.description,
+        onClick: { type: 'dispatch-control', controlId: button.dispatch }
+      }))
+    },
+    sections: contentSections,
+    emptyState: contentSections.every((item) => item.empty) ? 'No Phase 2 dashboard data loaded yet.' : null,
+    renderPolicy: {
+      ...model.renderPolicy,
+      domNeutral: true,
+      eventHandlersOnlyDispatchControls: true
+    }
+  });
+}
+
 export function createPhase2DashboardController({ runtime, createIdempotencyKey = createDashboardIdempotencyKey } = {}) {
   if (!runtime || typeof runtime.snapshot !== 'function' || typeof runtime.load !== 'function' || typeof runtime.refresh !== 'function' || typeof runtime.writeRunSummary !== 'function') {
     throw new Phase2DashboardError('Phase 2 dashboard controller requires a runtime.', { missing: 'runtime' });

@@ -28,4 +28,6 @@ The UI must call Local API/HostConnector contracts only; it must not call local 
 
 `createPhase2DashboardInteractionModel()` wraps the view model with UI-ready runtime state and control descriptors for Load, Refresh, and Write Run Summary. `createPhase2DashboardScreenModel()` turns that interaction model into render-ready sections, buttons, status labels, and accessibility live text. `phase2DashboardScreen.render()` returns the current screen model; `phase2DashboardScreen.click(controlId, options)` routes enabled buttons through `phase2DashboardController.dispatch(...)` only.
 
+`createPhase2DashboardShellModel()` is the DOM-neutral shell render tree for the Phase 2 dashboard. It maps the screen model into a header, runtime alerts, metric cards, toolbar buttons, and content sections. Toolbar buttons expose declarative `{ type: 'dispatch-control', controlId }` handlers only, so the future visual/DOM layer can bind clicks without gaining Local API, CLI, filesystem, or Obsidian write access.
+
 The screen model preserves the runtime guardrails: dispatch-only button handling, no polling, no bootstrap network call, and no direct CLI/filesystem/Obsidian behavior in UI code.

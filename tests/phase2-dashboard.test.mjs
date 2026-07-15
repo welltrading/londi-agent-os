@@ -8,6 +8,7 @@ import {
   createPhase2DashboardController,
   createPhase2DashboardScreenModel,
   createPhase2DashboardScreen,
+  createPhase2DashboardShellModel,
   createPhase2DashboardViewModel,
   createPhase2DashboardInteractionModel,
   loadPhase2DashboardFromApi,
@@ -69,6 +70,19 @@ assert.equal(screenModel.ariaLive, 'Ready');
 assert.equal(createPhase2DashboardScreenModel(errorInteraction).ariaLive, 'network down');
 assert.equal(Object.isFrozen(screenModel.sections[0]), true);
 assert.throws(() => { screenModel.buttons[0].label = 'mutated'; }, TypeError);
+
+const shellModel = createPhase2DashboardShellModel(screenModel);
+assert.equal(shellModel.shellId, 'phase2-dashboard-shell');
+assert.equal(shellModel.route, '/');
+assert.equal(shellModel.header.statusLabel, 'Ready');
+assert.equal(shellModel.metricCards.find((card) => card.id === 'agents').value, 4);
+assert.equal(shellModel.toolbar.buttons.find((button) => button.id === 'refresh').onClick.controlId, 'refresh');
+assert.equal(shellModel.sections.find((section) => section.id === 'agents').itemCount, 4);
+assert.equal(shellModel.renderPolicy.domNeutral, true);
+assert.equal(shellModel.renderPolicy.eventHandlersOnlyDispatchControls, true);
+assert.equal(createPhase2DashboardShellModel(createPhase2DashboardScreenModel(errorInteraction)).alerts[0].message, 'network down');
+assert.equal(Object.isFrozen(shellModel.toolbar.buttons[0].onClick), true);
+assert.throws(() => { shellModel.toolbar.buttons[0].onClick.controlId = 'mutated'; }, TypeError);
 
 const obsidianInteraction = createPhase2DashboardInteractionModel(createPhase2DashboardViewModel({ ...dashboard, obsidian: { available: true, targetFolder: 'Londi Agent OS/Runs/' } }));
 assert.equal(obsidianInteraction.controls.find((control) => control.id === 'write-run-summary').disabled, false);
