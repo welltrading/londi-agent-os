@@ -58,3 +58,10 @@ Append-only log of significant project decisions.
 - **Reason:** A host renderer needs mountable dashboard HTML and click binding descriptors without giving the visual layer Local API, HostConnector, CLI, filesystem, secret, or Obsidian write access.
 - **Implementation:** `createPhase2DashboardVisualAdapter()` returns escaped static HTML, a target selector, and `{ event: 'click', handler: { type: 'dispatch-control', controlId } }` bindings; `getUiBootstrapModel()` exposes it as `phase2DashboardVisualAdapter`.
 - **Guardrail:** Static HTML and bind-controls-only descriptors; no DOM mutation, no event registration in the adapter, no polling, and no bootstrap network calls.
+
+## 2026-07-15 — Phase 2 DOM binder added
+
+- **Decision:** Add a controlled DOM binder above the static Phase 2 visual adapter.
+- **Reason:** A host renderer needs a narrow mount/bind/rerender boundary without giving DOM code Local API, HostConnector, CLI, filesystem, secret, or Obsidian write access.
+- **Implementation:** `createPhase2DashboardDomBinder()` mounts adapter HTML into a provided target, binds enabled dispatch-control buttons to `screen.click(...)`, re-renders after dispatch, and exposes `mount()`, `refresh()`, `unmount()`, and `isMounted()`.
+- **Guardrail:** Controlled DOM mutation only for mount/rerender/unmount; no polling, no bootstrap network calls, no raw DOM event forwarding by default, and no direct Local API/HostConnector/filesystem/CLI/Obsidian access.

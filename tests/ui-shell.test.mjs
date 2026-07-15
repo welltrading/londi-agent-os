@@ -30,6 +30,8 @@ assert.equal(bootstrap.phase2DashboardShell.renderPolicy.domNeutral, true);
 assert.equal(bootstrap.phase2DashboardVisualAdapter.adapterId, 'phase2-dashboard-visual-adapter');
 assert.equal(bootstrap.phase2DashboardVisualAdapter.bindings.every((binding) => binding.handler.type === 'dispatch-control'), true);
 assert.equal(bootstrap.phase2DashboardVisualAdapter.renderPolicy.staticHtmlOnly, true);
+assert.equal(bootstrap.phase2DashboardDomBinder.binderId, 'phase2-dashboard-dom-binder');
+assert.equal(bootstrap.phase2DashboardDomBinder.isMounted(), false);
 assert.equal(bootstrap.phase2DashboardRuntime.snapshot().title, 'Londi Agent OS');
 assert.equal(bootstrap.phase2DashboardRuntime.snapshot().agents.length, 4);
 assert.equal(validateAccessibilityModel(createAccessibilityModel()), true);

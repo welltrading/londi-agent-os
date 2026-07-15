@@ -16,6 +16,7 @@ Local UI shell and dashboard/client-state models.
 - UI must not call local CLIs, access secrets, or write Obsidian directly.
 - Project-based work should display `ProjectWorkspace` with all four agents when relevant.
 - Phase 2 dashboard must expose agents, skills, projects, runs, refresh, and Obsidian Run Summary action model.
+- Phase 2 DOM binding may mount static dashboard HTML into a provided target and bind dispatch-only controls, but it must not call Local API, HostConnector, CLIs, secrets, filesystem, or Obsidian directly.
 
 ## Work Guidance
 

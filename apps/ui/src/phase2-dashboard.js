@@ -235,6 +235,92 @@ export function createPhase2DashboardVisualAdapter(shell = createPhase2Dashboard
   });
 }
 
+export function createPhase2DashboardDomBinder({ screen, documentRef = globalThis.document, target = '#phase2-dashboard-root', createAdapter = createPhase2DashboardVisualAdapter, createDispatchOptions = () => ({}) } = {}) {
+  if (!screen || typeof screen.render !== 'function' || typeof screen.click !== 'function') throw new Phase2DashboardError('Phase 2 dashboard DOM binder requires a screen.', { missing: 'screen' });
+  if (typeof createAdapter !== 'function') throw new Phase2DashboardError('Phase 2 dashboard DOM binder requires an adapter factory.', { missing: 'createAdapter' });
+  if (typeof createDispatchOptions !== 'function') throw new Phase2DashboardError('Phase 2 dashboard DOM binder requires a dispatch options factory.', { missing: 'createDispatchOptions' });
+
+  let mountedTarget = null;
+  let mountedTargetRef = target;
+  let mounted = false;
+  let teardown = [];
+
+  const unbind = () => {
+    for (const item of teardown) item.node.removeEventListener(item.event, item.listener);
+    teardown = [];
+  };
+  const resolveTarget = (targetRef) => {
+    if (targetRef && typeof targetRef === 'object') return targetRef;
+    if (!documentRef || typeof documentRef.querySelector !== 'function') throw new Phase2DashboardError('Phase 2 dashboard DOM binder requires a document with querySelector before mount.', { missing: 'documentRef' });
+    const node = documentRef.querySelector(targetRef);
+    if (!node) throw new Phase2DashboardError('Phase 2 dashboard target was not found.', { target: targetRef });
+    return node;
+  };
+  const renderIntoTarget = () => {
+    if (!mountedTarget) throw new Phase2DashboardError('Phase 2 dashboard DOM binder is not mounted.', { missing: 'target' });
+    unbind();
+    const shell = createPhase2DashboardShellModel(screen.render());
+    const adapter = createAdapter(shell, { target: mountedTargetRef });
+    mountedTarget.innerHTML = adapter.html;
+    let activeBindingCount = 0;
+    for (const binding of adapter.bindings) {
+      if (binding.disabled) continue;
+      const node = mountedTarget.querySelector?.(binding.selector) ?? documentRef?.querySelector?.(binding.selector) ?? null;
+      if (!node || typeof node.addEventListener !== 'function') continue;
+      const listener = async (event) => {
+        event?.preventDefault?.();
+        await screen.click(binding.controlId, createDispatchOptions(binding.controlId, binding));
+        renderIntoTarget();
+      };
+      node.addEventListener(binding.event, listener);
+      teardown.push({ node, event: binding.event, listener });
+      activeBindingCount += 1;
+    }
+    return deepFreeze({
+      binderId: 'phase2-dashboard-dom-binder',
+      mounted: true,
+      target: adapter.target,
+      bindingCount: adapter.bindings.length,
+      activeBindingCount,
+      ariaLive: adapter.ariaLive,
+      renderPolicy: {
+        ...adapter.renderPolicy,
+        noDomMutation: false,
+        controlledDomMutation: true,
+        mountsStaticHtml: true,
+        bindsDispatchControls: true,
+        rerenderAfterDispatch: true,
+        noPolling: true,
+        noBootstrapNetworkCall: true,
+        noDirectFilesystemOrCli: true
+      }
+    });
+  };
+
+  return Object.freeze({
+    binderId: 'phase2-dashboard-dom-binder',
+    mount({ target: nextTarget = mountedTargetRef } = {}) {
+      mountedTargetRef = nextTarget;
+      mountedTarget = resolveTarget(nextTarget);
+      mounted = true;
+      return renderIntoTarget();
+    },
+    refresh() {
+      return renderIntoTarget();
+    },
+    unmount({ clear = true } = {}) {
+      unbind();
+      if (clear && mountedTarget) mountedTarget.innerHTML = '';
+      mountedTarget = null;
+      mounted = false;
+      return deepFreeze({ binderId: 'phase2-dashboard-dom-binder', mounted: false, target: mountedTargetRef });
+    },
+    isMounted() {
+      return mounted;
+    }
+  });
+}
+
 export function createPhase2DashboardController({ runtime, createIdempotencyKey = createDashboardIdempotencyKey } = {}) {
   if (!runtime || typeof runtime.snapshot !== 'function' || typeof runtime.load !== 'function' || typeof runtime.refresh !== 'function' || typeof runtime.writeRunSummary !== 'function') {
     throw new Phase2DashboardError('Phase 2 dashboard controller requires a runtime.', { missing: 'runtime' });

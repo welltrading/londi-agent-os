@@ -10,6 +10,7 @@ import {
   createPhase2DashboardScreen,
   createPhase2DashboardShellModel,
   createPhase2DashboardVisualAdapter,
+  createPhase2DashboardDomBinder,
   createPhase2DashboardViewModel,
   createPhase2DashboardInteractionModel,
   loadPhase2DashboardFromApi,
@@ -166,6 +167,42 @@ await screen.click('missing-control');
 assert.equal(screenCalls.at(-1)[0], 'missing-control');
 assert.throws(() => createPhase2DashboardScreen({ controller: {} }), Phase2DashboardError);
 
+const fakeDocument = createFakeDocument();
+const rootNode = fakeDocument.querySelector('#phase2-dashboard-root');
+let domClicked = false;
+const domScreen = {
+  render: () => createPhase2DashboardScreenModel(domClicked ? createPhase2DashboardInteractionModel(loadedControllerView, { lastAction: 'refresh' }) : obsidianInteraction),
+  click: async (controlId, options = {}) => {
+    screenCalls.push(['dom', controlId, options]);
+    domClicked = true;
+    return domScreen.render();
+  }
+};
+const binder = createPhase2DashboardDomBinder({
+  screen: domScreen,
+  documentRef: fakeDocument,
+  createDispatchOptions: (controlId, binding) => ({ source: 'dom-binder', controlId, bindingEvent: binding.event })
+});
+assert.equal(binder.binderId, 'phase2-dashboard-dom-binder');
+assert.equal(binder.isMounted(), false);
+const mounted = binder.mount();
+assert.equal(binder.isMounted(), true);
+assert.equal(mounted.bindingCount, 3);
+assert.equal(mounted.activeBindingCount, 3);
+assert.equal(mounted.renderPolicy.controlledDomMutation, true);
+assert.equal(mounted.renderPolicy.noPolling, true);
+assert.equal(rootNode.innerHTML.includes('data-shell-id="phase2-dashboard-shell"'), true);
+await rootNode.querySelector('[data-control-id="refresh"]').click();
+assert.deepEqual(screenCalls.at(-1), ['dom', 'refresh', { source: 'dom-binder', controlId: 'refresh', bindingEvent: 'click' }]);
+assert.equal('event' in screenCalls.at(-1)[2], false);
+assert.equal(rootNode.innerHTML.includes('Last action: refresh'), true);
+const unmounted = binder.unmount();
+assert.equal(unmounted.mounted, false);
+assert.equal(binder.isMounted(), false);
+assert.equal(rootNode.innerHTML, '');
+assert.throws(() => createPhase2DashboardDomBinder({ screen: {} }), Phase2DashboardError);
+assert.throws(() => createPhase2DashboardDomBinder({ screen: domScreen, documentRef: fakeDocument }).mount({ target: '#missing' }), Phase2DashboardError);
+
 const refreshRequests = createPhase2DashboardApiRequests({ refresh: true, projectId: 'Client AI OS' });
 assert.equal(refreshRequests.find((request) => request.id === 'load-agents').path, '/agents?refresh=true');
 assert.equal(refreshRequests.find((request) => request.id === 'upsert-project').path, '/projects/Client%20AI%20OS');
@@ -229,3 +266,40 @@ assert.equal(runtimeWrite.dashboard.metrics.find((item) => item.id === 'runs').v
 assert.equal(calls.at(-1).options.headers['x-request-id'], 'phase2-runtime-test-run-summary');
 
 console.log('Phase 2 dashboard tests OK');
+
+function createFakeDocument() {
+  const nodes = new Map();
+  const root = createFakeNode('#phase2-dashboard-root');
+  nodes.set('#phase2-dashboard-root', root);
+  return {
+    querySelector(selector) {
+      return nodes.get(selector) ?? null;
+    }
+  };
+}
+
+function createFakeNode(selector) {
+  const listeners = new Map();
+  return {
+    selector,
+    innerHTML: '',
+    querySelector(nextSelector) {
+      return this.innerHTML.includes(nextSelector.replace('[', '').replace(']', '').replace('=', '="').replace('"', '')) || this.innerHTML.includes(nextSelector.slice(1, -1)) ? createFakeChildNode(nextSelector, listeners) : null;
+    }
+  };
+}
+
+function createFakeChildNode(selector, listeners) {
+  return {
+    selector,
+    addEventListener(event, listener) {
+      listeners.set(`${selector}:${event}`, listener);
+    },
+    removeEventListener(event, listener) {
+      if (listeners.get(`${selector}:${event}`) === listener) listeners.delete(`${selector}:${event}`);
+    },
+    click() {
+      return listeners.get(`${selector}:click`)?.({ preventDefault() {} });
+    }
+  };
+}
