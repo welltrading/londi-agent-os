@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Londi Agent OS — Dashboard Preview</title>
+  <title>Londi Agent OS — Phase 2 Dashboard Preview</title>
   <style>
     :root{--bg:#0b1020;--panel:#121a33;--panel2:#17213f;--text:#eef3ff;--muted:#9aa7c7;--line:#263456;--green:#35d07f;--blue:#5aa7ff;--amber:#ffcc66;--red:#ff6b6b;--purple:#b58cff}
     *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:radial-gradient(circle at 20% 0%,#1b2a55 0,#0b1020 36%);color:var(--text)}
     .wrap{max-width:1180px;margin:0 auto;padding:28px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:24px}.brand h1{margin:0;font-size:34px}.brand p{margin:8px 0 0;color:var(--muted)}
-    .badge{padding:10px 14px;border:1px solid rgba(53,208,127,.35);background:rgba(53,208,127,.12);color:#baf4d5;border-radius:999px;font-weight:700;white-space:nowrap}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card{background:rgba(18,26,51,.92);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.22)}
-    .metric .num{font-size:36px;font-weight:800;margin-top:8px}.metric .label,.muted{color:var(--muted)}.main{display:grid;grid-template-columns:1.35fr .85fr;gap:18px}.section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.section-title h2{margin:0;font-size:20px}.pill{font-size:12px;padding:5px 9px;border-radius:999px;background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
-    .run{display:grid;grid-template-columns:1fr auto;gap:10px;padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(23,33,63,.72);margin-bottom:10px}.run h3{margin:0 0 6px;font-size:16px}.state{font-weight:800}.blue{color:var(--blue)}.amber{color:var(--amber)}.green{color:var(--green)}.red{color:var(--red)}.purple{color:var(--purple)}
-    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.btn{border:1px solid var(--line);background:#0f1730;color:var(--text);border-radius:10px;padding:8px 10px;font-size:13px}.btn.primary{border-color:rgba(90,167,255,.45);background:rgba(90,167,255,.14)}.btn.warn{border-color:rgba(255,204,102,.45);background:rgba(255,204,102,.13)}
-    .list{display:grid;gap:10px}.item{padding:13px;border:1px solid var(--line);border-radius:14px;background:rgba(23,33,63,.72)}.health{display:grid;grid-template-columns:1fr 1fr;gap:10px}.small{font-size:13px}.footer{margin-top:18px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:14px}.ltr{direction:ltr;text-align:left}
-    @media(max-width:900px){.grid,.main{grid-template-columns:1fr}.top{display:block}.badge{display:inline-block;margin-top:14px}}
+    .badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.badge{padding:10px 14px;border:1px solid rgba(90,167,255,.35);background:rgba(90,167,255,.12);color:#cfe5ff;border-radius:999px;font-weight:700;white-space:nowrap}.badge.green{border-color:rgba(53,208,127,.35);background:rgba(53,208,127,.12);color:#baf4d5}.badge.amber{border-color:rgba(255,204,102,.35);background:rgba(255,204,102,.12);color:#ffe2a0}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card{background:rgba(18,26,51,.92);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.22)}
+    .metric .num{font-size:36px;font-weight:800;margin-top:8px}.metric .label,.muted{color:var(--muted)}.main{display:grid;grid-template-columns:1.25fr .95fr;gap:18px}.section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px}.section-title h2{margin:0;font-size:20px}.pill{font-size:12px;padding:5px 9px;border-radius:999px;background:var(--panel2);color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+    .blue{color:var(--blue)}.amber{color:var(--amber)}.green{color:var(--green)}.red{color:var(--red)}.purple{color:var(--purple)}.neutral{color:var(--muted)}
+    .list{display:grid;gap:10px}.item{padding:13px;border:1px solid var(--line);border-radius:14px;background:rgba(23,33,63,.72)}.cards2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.small{font-size:13px}.footer{margin-top:18px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:14px}.ltr{direction:ltr;text-align:left}.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.state{font-weight:800}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.btn{border:1px solid var(--line);background:#0f1730;color:var(--text);border-radius:10px;padding:8px 10px;font-size:13px}.btn.primary{border-color:rgba(90,167,255,.45);background:rgba(90,167,255,.14)}.btn.green{border-color:rgba(53,208,127,.45);background:rgba(53,208,127,.13)}.btn.warn{border-color:rgba(255,204,102,.45);background:rgba(255,204,102,.13)}
+    @media(max-width:900px){.grid,.main,.cards2{grid-template-columns:1fr}.top{display:block}.badges{justify-content:flex-start;margin-top:14px}}
   </style>
 </head>
 <body>
@@ -21,74 +21,81 @@
     <header class="top">
       <div class="brand">
         <h1>Londi Agent OS</h1>
-        <p>תצוגת Dashboard סטטית מתוך ה־MVP skeleton — לא runtime חי עדיין.</p>
+        <p>Phase 2 Dashboard preview — Local API / HostConnector runtime model, ללא קריאת API חיה בקובץ הזה.</p>
       </div>
-      <div class="badge">MVP Skeleton Complete · Go</div>
+      <div class="badges">
+        <div class="badge green">Phase 2 Runtime Slice</div>
+        <div class="badge amber">Static Preview</div>
+      </div>
     </header>
 
     <section class="grid">
-      <div class="card metric"><div class="label">ריצות פעילות</div><div class="num blue">1</div></div>
-      <div class="card metric"><div class="label">ממתין לאישור</div><div class="num amber">2</div></div>
-      <div class="card metric"><div class="label">דורש תשומת לב</div><div class="num red">1</div></div>
-      <div class="card metric"><div class="label">הושלמו</div><div class="num green">3</div></div>
+      <div class="card metric"><div class="label">Agents</div><div class="num blue">4</div></div>
+      <div class="card metric"><div class="label">Active projects</div><div class="num green">1</div></div>
+      <div class="card metric"><div class="label">Active skills</div><div class="num purple">3</div></div>
+      <div class="card metric"><div class="label">Succeeded runs</div><div class="num green">1</div></div>
     </section>
 
     <main class="main">
-      <section class="card">
-        <div class="section-title"><h2>Runs</h2><span class="pill">Dashboard model preview</span></div>
-        <article class="run">
-          <div><h3>Implement WhatsApp lead intake flow</h3><div class="muted small">run-104 · Claude Code · feature pipeline</div><div class="actions"><button class="btn primary">פתח פרטים</button><button class="btn">Cancel</button></div></div>
-          <div class="state blue">Running</div>
-        </article>
-        <article class="run">
-          <div><h3>Approve CRM sync pipeline</h3><div class="muted small">run-105 · Gate A · pipeline approval</div><div class="actions"><button class="btn primary">Approve pipeline</button><button class="btn warn">Request changes</button></div></div>
-          <div class="state amber">Awaiting Approval</div>
-        </article>
-        <article class="run">
-          <div><h3>Manual merge verification</h3><div class="muted small">run-106 · Completed only after verified merge</div><div class="actions"><button class="btn primary">Verify merge</button></div></div>
-          <div class="state purple">Awaiting Acceptance</div>
-        </article>
-        <article class="run">
-          <div><h3>Codex adapter parity check</h3><div class="muted small">run-107 · needs retry after failed preflight</div><div class="actions"><button class="btn warn">Retry</button><button class="btn">Stop</button></div></div>
-          <div class="state red">Needs Attention</div>
-        </article>
+      <section class="list">
+        <section class="card">
+          <div class="section-title"><h2>Agent Management</h2><span class="pill">4 agents · status + usage</span></div>
+          <div class="cards2">
+            <div class="item"><div class="row"><b>Agent Zero</b><span class="state green">Active</span></div><div class="muted small">Orchestrator / Host</div><div class="small ltr">usage: local estimate · source: estimated</div></div>
+            <div class="item"><div class="row"><b>Codex</b><span class="state blue">Available</span></div><div class="muted small">Code execution agent</div><div class="small ltr">usage: subscription · source: cli</div></div>
+            <div class="item"><div class="row"><b>Claude Code</b><span class="state blue">Available</span></div><div class="muted small">Execution / review agent</div><div class="small ltr">usage: subscription · source: cli</div></div>
+            <div class="item"><div class="row"><b>Hermes</b><span class="state amber">Planned</span></div><div class="muted small">Knowledge / assistant layer</div><div class="small ltr">usage: unavailable · source: unavailable</div></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title"><h2>Project Workspace</h2><span class="pill">ProjectWorkspace</span></div>
+          <div class="item">
+            <div class="row"><b>Londi Agent OS</b><span class="state green">active</span></div>
+            <div class="muted small ltr">/a0/usr/workdir/londi-agent-os</div>
+            <div class="actions"><button class="btn primary">Load</button><button class="btn">Refresh</button><button class="btn green">Write Run Summary</button></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title"><h2>Runs</h2><span class="pill">runtime view model</span></div>
+          <div class="item">
+            <div class="row"><b>Run Summary to Obsidian</b><span class="state green">succeeded</span></div>
+            <div class="muted small">run-phase2-demo · Agent Zero · obsidian-run-summary</div>
+            <div class="small ltr">artifact: Londi Agent OS/Runs/YYYY-MM-DD__run-phase2-demo__run-summary.md</div>
+          </div>
+        </section>
       </section>
 
       <aside class="list">
         <section class="card">
-          <div class="section-title"><h2>Approvals Inbox</h2><span class="pill">2 pending</span></div>
-          <div class="item"><b>Gate A</b><br><span class="muted small">Pipeline approval requires fresh revision.</span></div>
-          <div class="item"><b>Gate E</b><br><span class="muted small">Acceptance snapshot locked before decision.</span></div>
+          <div class="section-title"><h2>Obsidian</h2><span class="pill green">available</span></div>
+          <div class="item"><b>Target folder</b><br><span class="muted small ltr">Londi Agent OS/Runs/</span></div>
+          <div class="item"><b>Write boundary</b><br><span class="muted small">Dashboard → Local API → HostConnector → Obsidian</span></div>
         </section>
         <section class="card">
-          <div class="section-title"><h2>Agent Ecosystem</h2><span class="pill">4 agents</span></div>
-          <div class="health">
-            <div class="item"><b>Codex</b><br><span class="muted small">Active adapter · code execution</span><br><span class="state green small">Active</span></div>
-            <div class="item"><b>Claude Code</b><br><span class="muted small">Active adapter · code execution</span><br><span class="state green small">Active</span></div>
-            <div class="item"><b>Agent Zero</b><br><span class="muted small">Orchestrator / control layer</span><br><span class="state blue small">Host</span></div>
-            <div class="item"><b>Hermes</b><br><span class="muted small">Knowledge / assistant layer</span><br><span class="state amber small">Planned</span></div>
-          </div>
+          <div class="section-title"><h2>Skill Registry</h2><span class="pill">3 active</span></div>
+          <div class="item"><b>obsidian-run-summary</b><br><span class="muted small">Write Run Summary to Obsidian</span></div>
+          <div class="item"><b>local-agent-status</b><br><span class="muted small">Agent availability cards</span></div>
+          <div class="item"><b>usage-status-refresh</b><br><span class="muted small">Manual status/usage refresh</span></div>
         </section>
         <section class="card">
-          <div class="section-title"><h2>System Health</h2><span class="pill green">healthy</span></div>
-          <div class="health">
-            <div class="item"><b>Active adapters</b><br><span class="muted small">Claude Code, Codex</span></div>
-            <div class="item"><b>Policy</b><br><span class="muted small">No auto-merge</span></div>
-            <div class="item"><b>CI</b><br><span class="muted small">npm run ci passed</span></div>
-            <div class="item"><b>Release</b><br><span class="muted small">Go</span></div>
-          </div>
+          <div class="section-title"><h2>Runtime Policy</h2><span class="pill">no polling</span></div>
+          <div class="item"><b>Initial state</b><br><span class="muted small">Local snapshot from bootstrap; no network call until load.</span></div>
+          <div class="item"><b>Refresh</b><br><span class="muted small">Manual load with refresh flag; cache labels displayed.</span></div>
+          <div class="item"><b>Guardrails</b><br><span class="muted small">No UI CLI calls, no direct filesystem writes, no auto-merge.</span></div>
         </section>
         <section class="card">
           <div class="section-title"><h2>Evidence</h2><span class="pill">docs</span></div>
-          <div class="item ltr">docs/release-decision.md</div>
-          <div class="item ltr">docs/mvp-skeleton-completion-summary.md</div>
+          <div class="item ltr">docs/phase2-runtime-slice.md</div>
+          <div class="item ltr">docs/dashboard.md</div>
           <div class="item ltr">decisions/log.md</div>
         </section>
       </aside>
     </main>
 
     <footer class="footer">
-      Generated preview: 2026-07-14 · This is a static visual preview, not a connected local API dashboard yet.
+      Generated preview: 2026-07-15 · Static visual preview of the Phase 2 dashboard runtime model; not connected to a live Local API in this HTML file.
     </footer>
   </div>
 </body>
