@@ -9,6 +9,7 @@ import {
   createPhase2DashboardScreenModel,
   createPhase2DashboardScreen,
   createPhase2DashboardShellModel,
+  createPhase2DashboardVisualAdapter,
   createPhase2DashboardViewModel,
   createPhase2DashboardInteractionModel,
   loadPhase2DashboardFromApi,
@@ -83,6 +84,26 @@ assert.equal(shellModel.renderPolicy.eventHandlersOnlyDispatchControls, true);
 assert.equal(createPhase2DashboardShellModel(createPhase2DashboardScreenModel(errorInteraction)).alerts[0].message, 'network down');
 assert.equal(Object.isFrozen(shellModel.toolbar.buttons[0].onClick), true);
 assert.throws(() => { shellModel.toolbar.buttons[0].onClick.controlId = 'mutated'; }, TypeError);
+
+const visualAdapter = createPhase2DashboardVisualAdapter(shellModel, { target: '#dashboard' });
+assert.equal(visualAdapter.adapterId, 'phase2-dashboard-visual-adapter');
+assert.equal(visualAdapter.target, '#dashboard');
+assert.equal(visualAdapter.html.includes('data-shell-id="phase2-dashboard-shell"'), true);
+assert.equal(visualAdapter.html.includes('data-control-id="refresh"'), true);
+assert.equal(visualAdapter.bindings.find((binding) => binding.controlId === 'refresh').handler.type, 'dispatch-control');
+assert.equal(visualAdapter.bindings.every((binding) => binding.event === 'click'), true);
+assert.equal(visualAdapter.renderPolicy.staticHtmlOnly, true);
+assert.equal(visualAdapter.renderPolicy.bindControlsOnly, true);
+assert.equal(visualAdapter.renderPolicy.noDomMutation, true);
+assert.equal(Object.isFrozen(visualAdapter.bindings[0].handler), true);
+assert.throws(() => { visualAdapter.bindings[0].controlId = 'mutated'; }, TypeError);
+const escapedViewModel = createPhase2DashboardViewModel({ ...dashboard, projects: [{ id: '<script>', name: '<Client>', rootPath: 'A&B' }] });
+const escapedInteraction = createPhase2DashboardInteractionModel(escapedViewModel);
+const escapedScreenModel = createPhase2DashboardScreenModel(escapedInteraction);
+const escapedShellModel = createPhase2DashboardShellModel(escapedScreenModel);
+const escapedVisualAdapter = createPhase2DashboardVisualAdapter(escapedShellModel);
+assert.equal(escapedVisualAdapter.html.includes('<Client>'), false);
+assert.equal(escapedVisualAdapter.html.includes('&lt;Client&gt;'), true);
 
 const obsidianInteraction = createPhase2DashboardInteractionModel(createPhase2DashboardViewModel({ ...dashboard, obsidian: { available: true, targetFolder: 'Londi Agent OS/Runs/' } }));
 assert.equal(obsidianInteraction.controls.find((control) => control.id === 'write-run-summary').disabled, false);

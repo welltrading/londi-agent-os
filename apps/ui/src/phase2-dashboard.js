@@ -203,6 +203,38 @@ export function createPhase2DashboardShellModel(screen = createPhase2DashboardSc
   });
 }
 
+export function createPhase2DashboardVisualAdapter(shell = createPhase2DashboardShellModel(), { target = '#phase2-dashboard-root' } = {}) {
+  const model = shell?.shellId === 'phase2-dashboard-shell' ? shell : createPhase2DashboardShellModel(shell);
+  const html = [
+    `<section class="phase2-dashboard" data-shell-id="${escapeHtml(model.shellId)}" data-route="${escapeHtml(model.route)}">`,
+    renderVisualHeader(model.header),
+    renderVisualAlerts(model.alerts),
+    renderVisualMetrics(model.metricCards),
+    renderVisualToolbar(model.toolbar),
+    model.emptyState ? `<p class="phase2-dashboard__empty">${escapeHtml(model.emptyState)}</p>` : renderVisualSections(model.sections),
+    '</section>'
+  ].join('');
+  return deepFreeze({
+    adapterId: 'phase2-dashboard-visual-adapter',
+    target,
+    html,
+    bindings: model.toolbar.buttons.map((button) => ({
+      selector: `[data-control-id="${escapeHtml(button.id)}"]`,
+      controlId: button.onClick.controlId,
+      event: 'click',
+      handler: button.onClick,
+      disabled: button.disabled
+    })),
+    ariaLive: model.toolbar.ariaLive,
+    renderPolicy: {
+      ...model.renderPolicy,
+      staticHtmlOnly: true,
+      bindControlsOnly: true,
+      noDomMutation: true
+    }
+  });
+}
+
 export function createPhase2DashboardController({ runtime, createIdempotencyKey = createDashboardIdempotencyKey } = {}) {
   if (!runtime || typeof runtime.snapshot !== 'function' || typeof runtime.load !== 'function' || typeof runtime.refresh !== 'function' || typeof runtime.writeRunSummary !== 'function') {
     throw new Phase2DashboardError('Phase 2 dashboard controller requires a runtime.', { missing: 'runtime' });
@@ -331,6 +363,41 @@ async function fetchApiResource(fetchImpl, request, { expectedStatus = 200 } = {
   const payload = await response.json();
   if (response.status !== expectedStatus) throw new Phase2DashboardError('Local API request failed.', { status: response.status, expectedStatus, error: payload.error ?? payload.message ?? null });
   return { data: payload.data, resourceVersion: payload.resourceVersion ?? null, cached: Boolean(payload.data?.cached) };
+}
+
+function renderVisualHeader(header) {
+  return `<header class="phase2-dashboard__header"><div><h1>${escapeHtml(header.title)}</h1><p>${escapeHtml(header.subtitle)}</p></div><dl><dt>Status</dt><dd>${escapeHtml(header.statusLabel)}</dd><dt>Cache</dt><dd>${escapeHtml(header.cachedLabel)}</dd><dt>Updated</dt><dd>${escapeHtml(header.lastUpdated)}</dd><dt>Obsidian</dt><dd data-tone="${escapeHtml(header.obsidianTone)}">${escapeHtml(header.obsidianLabel)}</dd></dl></header>`;
+}
+
+function renderVisualAlerts(alerts) {
+  return alerts.map((alert) => `<p class="phase2-dashboard__alert" data-tone="${escapeHtml(alert.tone)}">${escapeHtml(alert.message)}</p>`).join('');
+}
+
+function renderVisualMetrics(metricCards) {
+  return `<section class="phase2-dashboard__metrics" aria-label="Phase 2 metrics">${metricCards.map((card) => `<article data-metric-id="${escapeHtml(card.id)}" data-tone="${escapeHtml(card.tone)}"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong></article>`).join('')}</section>`;
+}
+
+function renderVisualToolbar(toolbar) {
+  return `<nav class="phase2-dashboard__toolbar" aria-live="polite" data-aria-live="${escapeHtml(toolbar.ariaLive)}">${toolbar.buttons.map((button) => `<button type="button" data-control-id="${escapeHtml(button.id)}" ${button.disabled ? 'disabled ' : ''}aria-busy="${button.loading ? 'true' : 'false'}" title="${escapeHtml(button.description)}">${escapeHtml(button.label)}</button>`).join('')}</nav>`;
+}
+
+function renderVisualSections(sections) {
+  return sections.map((sectionItem) => `<section class="phase2-dashboard__section" data-section-id="${escapeHtml(sectionItem.id)}"><h2>${escapeHtml(sectionItem.title)}</h2>${sectionItem.empty ? '<p>No items.</p>' : `<div>${sectionItem.items.map(renderVisualItem).join('')}</div>`}</section>`).join('');
+}
+
+function renderVisualItem(item) {
+  const attrs = Object.entries(item).filter(([, value]) => value !== null && value !== undefined && typeof value !== 'object').map(([key, value]) => ` data-${kebabCase(key)}="${escapeHtml(value)}"`).join('');
+  const label = item.name ?? item.title ?? item.displayName ?? item.label ?? item.id ?? 'Item';
+  const detail = item.role ?? item.statusLabel ?? item.status ?? item.summary ?? item.rootPath ?? item.tone ?? '';
+  return `<article class="phase2-dashboard__item"${attrs}><strong>${escapeHtml(label)}</strong>${detail ? `<span>${escapeHtml(detail)}</span>` : ''}</article>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function kebabCase(value) {
+  return String(value).replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
 }
 
 function section(id, title, items) {

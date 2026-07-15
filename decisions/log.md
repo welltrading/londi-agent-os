@@ -51,3 +51,10 @@ Append-only log of significant project decisions.
 - **Reason:** The next visual layer needs a stable render tree for header, metrics, toolbar, alerts, and sections without embedding DOM/framework/runtime side effects.
 - **Implementation:** `createPhase2DashboardShellModel()` maps screen buttons to declarative `{ type: 'dispatch-control', controlId }` handlers and is exposed from `getUiBootstrapModel()`.
 - **Guardrail:** The shell stays pure and dispatch-only: no polling, no bootstrap network calls, and no direct Local API/HostConnector/filesystem/CLI/Obsidian access.
+
+## 2026-07-15 — Phase 2 visual dashboard adapter added
+
+- **Decision:** Add a static visual adapter above the Phase 2 dashboard shell model.
+- **Reason:** A host renderer needs mountable dashboard HTML and click binding descriptors without giving the visual layer Local API, HostConnector, CLI, filesystem, secret, or Obsidian write access.
+- **Implementation:** `createPhase2DashboardVisualAdapter()` returns escaped static HTML, a target selector, and `{ event: 'click', handler: { type: 'dispatch-control', controlId } }` bindings; `getUiBootstrapModel()` exposes it as `phase2DashboardVisualAdapter`.
+- **Guardrail:** Static HTML and bind-controls-only descriptors; no DOM mutation, no event registration in the adapter, no polling, and no bootstrap network calls.
