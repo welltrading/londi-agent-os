@@ -4,6 +4,7 @@ import {
   createApiClient,
   createPhase2DashboardApiRequests,
   createPhase2DashboardModel,
+  createPhase2DashboardViewModel,
   loadPhase2DashboardFromApi,
   writePhase2ObsidianRunSummary,
   assertProjectHasAllAgents,
@@ -23,6 +24,19 @@ assert.equal(dashboard.projects[0].agentIds.includes('codex'), true);
 assert.equal(dashboard.actions.find((action) => action.id === 'write-obsidian-run-summary').path, '/runs/obsidian-summary');
 assert.equal(assertProjectHasAllAgents(dashboard.projects[0]), true);
 assert.throws(() => assertProjectHasAllAgents({ id: 'x', name: 'X', agentIds: ['agent-zero'] }), Phase2DashboardError);
+
+const viewModel = createPhase2DashboardViewModel(dashboard);
+assert.equal(viewModel.title, 'Londi Agent OS');
+assert.equal(viewModel.cachedLabel, 'fresh');
+assert.equal(viewModel.metrics.find((item) => item.id === 'agents').value, 4);
+assert.equal(viewModel.obsidianLabel, 'Obsidian unavailable');
+assert.equal(viewModel.agents.find((agent) => agent.id === 'agent-zero').tone, 'green');
+assert.equal(viewModel.agents.find((agent) => agent.id === 'hermes').tone, 'amber');
+assert.equal(viewModel.projects[0].agents, 4);
+assert.equal(viewModel.skills.find((skill) => skill.id === 'obsidian-run-summary').agents, 1);
+assert.equal(viewModel.runs[0].tone, 'green');
+assert.equal(Object.isFrozen(viewModel.agents[0]), true);
+assert.throws(() => { viewModel.agents[0].name = 'mutated'; }, TypeError);
 
 const refreshRequests = createPhase2DashboardApiRequests({ refresh: true, projectId: 'Client AI OS' });
 assert.equal(refreshRequests.find((request) => request.id === 'load-agents').path, '/agents?refresh=true');

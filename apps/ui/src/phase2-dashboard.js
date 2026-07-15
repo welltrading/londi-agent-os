@@ -32,6 +32,44 @@ export function createPhase2DashboardModel({ agents = listPhase2AgentCards(), sk
   });
 }
 
+export function createPhase2DashboardViewModel(model = createPhase2DashboardModel()) {
+  const dashboard = createPhase2DashboardModel(model);
+  return deepFreeze({
+    title: 'Londi Agent OS',
+    subtitle: dashboard.obsidian?.available ? 'Live dashboard connected to Local API / HostConnector.' : 'Dashboard ready for Local API connection.',
+    generatedAt: dashboard.generatedAt,
+    lastUpdated: dashboard.lastUpdated,
+    cachedLabel: dashboard.cached ? 'cached' : 'fresh',
+    obsidianLabel: dashboard.obsidian?.available ? 'Obsidian available' : 'Obsidian unavailable',
+    obsidianTone: dashboard.obsidian?.available ? 'green' : 'amber',
+    metrics: [
+      metric('agents', 'Agents', dashboard.counts.agents, 'blue'),
+      metric('projects', 'Active projects', dashboard.counts.activeProjects, 'green'),
+      metric('skills', 'Active skills', dashboard.counts.activeSkills, 'purple'),
+      metric('runs', 'Succeeded runs', dashboard.counts.succeededRuns, 'green')
+    ],
+    agents: dashboard.agents.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      status: agent.status,
+      statusLabel: agent.statusLabel,
+      usageLabel: agent.usage?.label ?? 'Usage unavailable',
+      usageSource: agent.usage?.source ?? 'unavailable',
+      usageMode: agent.usage?.mode ?? 'unavailable',
+      warning: Boolean(agent.usage?.warning),
+      cached: Boolean(agent.usage?.cached || dashboard.cached),
+      lastUpdated: agent.lastUpdated ?? dashboard.lastUpdated,
+      tone: toneForAgentStatus(agent.status)
+    })),
+    projects: dashboard.projects.map((project) => ({ id: project.id, name: project.name, status: project.status, rootPath: project.rootPath, agents: project.agentIds.length, skills: project.skillIds.length })),
+    skills: dashboard.skills.map((skill) => ({ id: skill.id, displayName: skill.displayName, active: skill.active, agents: skill.agentIds.length })),
+    runs: dashboard.runs.map((run) => ({ id: run.id, title: run.title, status: run.status, agentId: run.agentId, skillId: run.skillId, summary: run.summary, artifactPath: run.artifactPath, lastUpdated: run.lastUpdated, tone: toneForRunStatus(run.status) })),
+    actions: dashboard.actions,
+    errors: dashboard.errors
+  });
+}
+
 export function createPhase2DashboardApiRequests({ refresh = false, projectId = '{projectId}' } = {}) {
   return Object.freeze([
     { id: 'load-agents', label: 'Load agent status / usage', method: 'GET', path: `/agents${refresh ? '?refresh=true' : ''}` },
@@ -89,6 +127,18 @@ async function fetchApiResource(fetchImpl, request, { expectedStatus = 200 } = {
   const payload = await response.json();
   if (response.status !== expectedStatus) throw new Phase2DashboardError('Local API request failed.', { status: response.status, expectedStatus, error: payload.error ?? payload.message ?? null });
   return { data: payload.data, resourceVersion: payload.resourceVersion ?? null, cached: Boolean(payload.data?.cached) };
+}
+
+function metric(id, label, value, tone) {
+  return { id, label, value, tone };
+}
+
+function toneForAgentStatus(status) {
+  return { active: 'green', available: 'blue', planned: 'amber', unavailable: 'red' }[status] ?? 'neutral';
+}
+
+function toneForRunStatus(status) {
+  return { idle: 'neutral', running: 'blue', succeeded: 'green', failed: 'red' }[status] ?? 'neutral';
 }
 
 function deepFreeze(value) {
