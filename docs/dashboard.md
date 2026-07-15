@@ -19,11 +19,13 @@ Project-based work is represented by `ProjectWorkspace`: every project can bind 
 
 The UI must call Local API/HostConnector contracts only; it must not call local CLIs or write Obsidian files directly.
 
-`getUiBootstrapModel()` exposes both `phase2DashboardRuntime` and `phase2DashboardController`. The runtime starts from a local snapshot and performs Local API calls only when explicitly invoked. The controller is the UI-facing button/action bridge and returns a frozen interaction model after every action.
+`getUiBootstrapModel()` exposes `phase2DashboardRuntime`, `phase2DashboardController`, and `phase2DashboardScreen`. The runtime starts from a local snapshot and performs Local API calls only when explicitly invoked. The controller is the UI-facing button/action bridge and returns a frozen interaction model after every action.
 
 - `phase2DashboardController.dispatch('load')` fetches agents, skills, projects, and Obsidian status through the runtime.
 - `phase2DashboardController.dispatch('refresh')` repeats the load with the refresh flag for agent/usage and Obsidian status.
 - `phase2DashboardController.dispatch('write-run-summary', { input })` posts the minimal run summary through Local API, generates an idempotency key when needed, and updates the dashboard view model from the returned run.
 - Unknown controls and runtime failures render as inline interaction-state errors instead of adding direct side effects to the UI.
 
-`createPhase2DashboardInteractionModel()` wraps the view model with UI-ready runtime state and control descriptors for Load, Refresh, and Write Run Summary. It exposes loading, last action, and error labels so the visual dashboard can wire buttons to `phase2DashboardController` without adding CLI, filesystem, polling, or direct Obsidian behavior to the UI.
+`createPhase2DashboardInteractionModel()` wraps the view model with UI-ready runtime state and control descriptors for Load, Refresh, and Write Run Summary. `createPhase2DashboardScreenModel()` turns that interaction model into render-ready sections, buttons, status labels, and accessibility live text. `phase2DashboardScreen.render()` returns the current screen model; `phase2DashboardScreen.click(controlId, options)` routes enabled buttons through `phase2DashboardController.dispatch(...)` only.
+
+The screen model preserves the runtime guardrails: dispatch-only button handling, no polling, no bootstrap network call, and no direct CLI/filesystem/Obsidian behavior in UI code.

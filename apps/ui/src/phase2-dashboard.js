@@ -95,6 +95,67 @@ export function createPhase2DashboardInteractionModel(viewModel = createPhase2Da
   });
 }
 
+export function createPhase2DashboardScreenModel(interaction = createPhase2DashboardInteractionModel()) {
+  const model = interaction?.runtime && Array.isArray(interaction?.controls) ? interaction : createPhase2DashboardInteractionModel(interaction);
+  const buttons = model.controls.map((item) => ({ id: item.id, label: item.label, disabled: item.disabled, loading: item.loading, description: item.description, dispatch: item.id }));
+  const controlsById = Object.fromEntries(buttons.map((item) => [item.id, item]));
+  return deepFreeze({
+    screenId: 'phase2-dashboard',
+    title: model.title,
+    subtitle: model.subtitle,
+    status: {
+      ready: model.runtime.ready,
+      loading: model.runtime.loading,
+      actionLabel: model.runtime.actionLabel,
+      error: model.runtime.error,
+      cachedLabel: model.cachedLabel,
+      lastUpdated: model.lastUpdated,
+      obsidianLabel: model.obsidianLabel,
+      obsidianTone: model.obsidianTone
+    },
+    sections: [
+      section('metrics', 'Runtime Slice', model.metrics),
+      section('agents', 'Agent Management', model.agents),
+      section('projects', 'Project Workspace', model.projects),
+      section('runs', 'Runs', model.runs),
+      section('obsidian', 'Obsidian', [{ label: model.obsidianLabel, tone: model.obsidianTone }]),
+      section('skills', 'Skill Registry', model.skills)
+    ],
+    buttons,
+    controlsById,
+    ariaLive: model.runtime.error ?? model.runtime.actionLabel,
+    renderPolicy: {
+      dispatchOnly: true,
+      noPolling: true,
+      noBootstrapNetworkCall: true,
+      noDirectFilesystemOrCli: true
+    }
+  });
+}
+
+export function createPhase2DashboardScreen({ controller } = {}) {
+  if (!controller || typeof controller.snapshot !== 'function' || typeof controller.dispatch !== 'function') throw new Phase2DashboardError('Phase 2 dashboard screen requires a controller.', { missing: 'controller' });
+
+  const render = () => createPhase2DashboardScreenModel(controller.snapshot());
+  return Object.freeze({
+    render,
+    async click(controlId, options = {}) {
+      const before = render();
+      const control = before.controlsById[controlId];
+      if (!control) {
+        await controller.dispatch(controlId, options);
+        return render();
+      }
+      if (control.disabled) {
+        const current = controller.snapshot();
+        return createPhase2DashboardScreenModel({ ...current, runtime: { ...current.runtime, error: `${control.label} is disabled.` } });
+      }
+      await controller.dispatch(control.dispatch, options);
+      return render();
+    }
+  });
+}
+
 export function createPhase2DashboardController({ runtime, createIdempotencyKey = createDashboardIdempotencyKey } = {}) {
   if (!runtime || typeof runtime.snapshot !== 'function' || typeof runtime.load !== 'function' || typeof runtime.refresh !== 'function' || typeof runtime.writeRunSummary !== 'function') {
     throw new Phase2DashboardError('Phase 2 dashboard controller requires a runtime.', { missing: 'runtime' });
@@ -223,6 +284,10 @@ async function fetchApiResource(fetchImpl, request, { expectedStatus = 200 } = {
   const payload = await response.json();
   if (response.status !== expectedStatus) throw new Phase2DashboardError('Local API request failed.', { status: response.status, expectedStatus, error: payload.error ?? payload.message ?? null });
   return { data: payload.data, resourceVersion: payload.resourceVersion ?? null, cached: Boolean(payload.data?.cached) };
+}
+
+function section(id, title, items) {
+  return { id, title, items };
 }
 
 function metric(id, label, value, tone) {

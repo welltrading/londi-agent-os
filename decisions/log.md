@@ -37,3 +37,10 @@ Append-only log of significant project decisions.
 - **Reason:** Keep visual button wiring simple while preserving the boundary that UI never calls CLIs, filesystem, or Obsidian directly.
 - **Implementation:** `createPhase2DashboardController()` dispatches known controls, tracks loading/last-action/error state, returns the frozen interaction model, and generates an idempotency key for Run Summary writes when needed.
 - **Guardrail:** No polling, no bootstrap network calls, no direct HostConnector access from UI, and unknown/runtime failures render inline as interaction-state errors.
+
+## 2026-07-15 — Phase 2 dashboard screen model added above controller
+
+- **Decision:** Add a UI-facing `phase2DashboardScreen` layer above the controller for render-ready sections, buttons, status labels, and click routing.
+- **Reason:** A visual dashboard needs a stable screen model without embedding DOM, framework, Local API, CLI, filesystem, or Obsidian side effects in UI rendering code.
+- **Implementation:** `createPhase2DashboardScreenModel()` preserves controller interaction state and exposes dispatch-only button descriptors; `createPhase2DashboardScreen()` provides `render()` and `click(controlId, options)` over `phase2DashboardController.dispatch(...)`.
+- **Guardrail:** No polling, no bootstrap network calls, no direct HostConnector/filesystem/CLI/Obsidian access from the screen layer; disabled controls do not dispatch.

@@ -6,6 +6,8 @@ import {
   createPhase2DashboardModel,
   createPhase2DashboardRuntime,
   createPhase2DashboardController,
+  createPhase2DashboardScreenModel,
+  createPhase2DashboardScreen,
   createPhase2DashboardViewModel,
   createPhase2DashboardInteractionModel,
   loadPhase2DashboardFromApi,
@@ -57,6 +59,17 @@ assert.equal(loadingInteraction.controls.find((control) => control.id === 'refre
 const errorInteraction = createPhase2DashboardInteractionModel(viewModel, { error: new Error('network down') });
 assert.equal(errorInteraction.runtime.error, 'network down');
 
+const screenModel = createPhase2DashboardScreenModel(idleInteraction);
+assert.equal(screenModel.screenId, 'phase2-dashboard');
+assert.equal(screenModel.sections.find((section) => section.id === 'agents').items.length, 4);
+assert.equal(screenModel.buttons.find((button) => button.id === 'load').dispatch, 'load');
+assert.equal(screenModel.renderPolicy.dispatchOnly, true);
+assert.equal(screenModel.renderPolicy.noPolling, true);
+assert.equal(screenModel.ariaLive, 'Ready');
+assert.equal(createPhase2DashboardScreenModel(errorInteraction).ariaLive, 'network down');
+assert.equal(Object.isFrozen(screenModel.sections[0]), true);
+assert.throws(() => { screenModel.buttons[0].label = 'mutated'; }, TypeError);
+
 const obsidianInteraction = createPhase2DashboardInteractionModel(createPhase2DashboardViewModel({ ...dashboard, obsidian: { available: true, targetFolder: 'Londi Agent OS/Runs/' } }));
 assert.equal(obsidianInteraction.controls.find((control) => control.id === 'write-run-summary').disabled, false);
 
@@ -97,6 +110,26 @@ assert.equal(controllerCalls.at(-1)[1].idempotencyKey, 'idem-run-2');
 const unknownInteraction = await controller.dispatch('missing-control');
 assert.equal(unknownInteraction.runtime.error, 'Unknown Phase 2 dashboard control.');
 assert.throws(() => createPhase2DashboardController({ runtime: {} }), Phase2DashboardError);
+
+const screenCalls = [];
+const screen = createPhase2DashboardScreen({
+  controller: {
+    snapshot: () => obsidianInteraction,
+    dispatch: (controlId, options) => {
+      screenCalls.push([controlId, options]);
+      return Promise.resolve(obsidianInteraction);
+    }
+  }
+});
+assert.equal(screen.render().buttons.find((button) => button.id === 'write-run-summary').disabled, false);
+const disabledScreen = createPhase2DashboardScreen({ controller: { snapshot: () => idleInteraction, dispatch: () => { throw new Error('disabled button should not dispatch'); } } });
+const disabledClick = await disabledScreen.click('write-run-summary');
+assert.equal(disabledClick.status.error, 'Write Run Summary is disabled.');
+await screen.click('refresh', { manual: true });
+assert.deepEqual(screenCalls.at(-1), ['refresh', { manual: true }]);
+await screen.click('missing-control');
+assert.equal(screenCalls.at(-1)[0], 'missing-control');
+assert.throws(() => createPhase2DashboardScreen({ controller: {} }), Phase2DashboardError);
 
 const refreshRequests = createPhase2DashboardApiRequests({ refresh: true, projectId: 'Client AI OS' });
 assert.equal(refreshRequests.find((request) => request.id === 'load-agents').path, '/agents?refresh=true');

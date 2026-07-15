@@ -21,7 +21,7 @@
     <header class="top">
       <div class="brand">
         <h1>Londi Agent OS</h1>
-        <p>Phase 2 Dashboard preview — Local API / HostConnector runtime model, ללא קריאת API חיה בקובץ הזה.</p>
+        <p>Phase 2 Dashboard preview — controller/screen/runtime model, ללא קריאת API חיה בקובץ הזה.</p>
       </div>
       <div class="badges">
         <div class="badge green">Phase 2 Runtime Slice</div>
@@ -54,7 +54,7 @@
             <div class="row"><b>Londi Agent OS</b><span class="state green">active</span></div>
             <div class="muted small ltr">/a0/usr/workdir/londi-agent-os</div>
             <div class="actions"><button class="btn primary">Load</button><button class="btn">Refresh</button><button class="btn green">Write Run Summary</button></div>
-            <div class="muted small">Controller model: dispatch(load/refresh/write-run-summary) · controls enabled by runtime state · errors render inline.</div>
+            <div class="muted small">Screen model: render() + click(controlId) → controller.dispatch(load/refresh/write-run-summary) · errors render inline.</div>
           </div>
         </section>
 
@@ -96,7 +96,7 @@
     </main>
 
     <footer class="footer">
-      Generated preview: 2026-07-15 · Static visual preview of the Phase 2 dashboard controller/runtime model; not connected to a live Local API in this HTML file.
+      Generated preview: 2026-07-15 · Static visual preview of the Phase 2 dashboard screen/controller/runtime model; not connected to a live Local API in this HTML file.
     </footer>
   </div>
 </body>
