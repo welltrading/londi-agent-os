@@ -70,6 +70,31 @@ export function createPhase2DashboardViewModel(model = createPhase2DashboardMode
   });
 }
 
+export function createPhase2DashboardInteractionModel(viewModel = createPhase2DashboardViewModel(), { loadingAction = null, lastAction = null, error = null } = {}) {
+  const loading = loadingAction !== null;
+  const actionLabel = {
+    load: 'Loading dashboard snapshot',
+    refresh: 'Refreshing status / usage',
+    'write-run-summary': 'Writing Run Summary to Obsidian'
+  }[loadingAction] ?? (lastAction ? `Last action: ${lastAction}` : 'Ready');
+  return deepFreeze({
+    ...viewModel,
+    runtime: {
+      ready: !loading,
+      loading,
+      loadingAction,
+      lastAction,
+      actionLabel,
+      error: error ? String(error.message ?? error) : null
+    },
+    controls: [
+      control('load', 'Load', loading, loadingAction === 'load', 'Load agent status, skills, projects, and Obsidian status.'),
+      control('refresh', 'Refresh', loading, loadingAction === 'refresh', 'Manual refresh for agent/usage and Obsidian cache.'),
+      control('write-run-summary', 'Write Run Summary', loading || viewModel.obsidianTone !== 'green', loadingAction === 'write-run-summary', 'Write the selected minimal run summary through Local API.')
+    ]
+  });
+}
+
 export function createPhase2DashboardRuntime({ apiClient, fetchImpl = globalThis.fetch, now = () => new Date().toISOString(), requestIdPrefix = 'phase2-dashboard' } = {}) {
   if (!apiClient || typeof apiClient.createRequest !== 'function') throw new Phase2DashboardError('Phase 2 dashboard runtime requires an API client.', { missing: 'apiClient' });
   if (typeof fetchImpl !== 'function') throw new Phase2DashboardError('Phase 2 dashboard runtime requires a fetch implementation.', { missing: 'fetch' });
@@ -157,6 +182,10 @@ async function fetchApiResource(fetchImpl, request, { expectedStatus = 200 } = {
 
 function metric(id, label, value, tone) {
   return { id, label, value, tone };
+}
+
+function control(id, label, disabled, loading, description) {
+  return { id, label, disabled: Boolean(disabled), loading: Boolean(loading), description };
 }
 
 function toneForAgentStatus(status) {

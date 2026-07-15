@@ -24,3 +24,5 @@ The UI must call Local API/HostConnector contracts only; it must not call local 
 - `load()` fetches agents, skills, projects, and Obsidian status.
 - `refresh()` repeats the load with the refresh flag for agent/usage and Obsidian status.
 - `writeRunSummary()` posts the minimal run summary to Local API and updates the dashboard view model from the returned run.
+
+`createPhase2DashboardInteractionModel()` wraps the view model with UI-ready runtime state and control descriptors for Load, Refresh, and Write Run Summary. It exposes loading, last action, and error labels so the visual dashboard can wire buttons to `phase2DashboardRuntime` without adding CLI, filesystem, polling, or direct Obsidian behavior to the UI.

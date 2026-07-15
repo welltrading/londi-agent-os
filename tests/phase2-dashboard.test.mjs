@@ -6,6 +6,7 @@ import {
   createPhase2DashboardModel,
   createPhase2DashboardRuntime,
   createPhase2DashboardViewModel,
+  createPhase2DashboardInteractionModel,
   loadPhase2DashboardFromApi,
   writePhase2ObsidianRunSummary,
   assertProjectHasAllAgents,
@@ -38,6 +39,25 @@ assert.equal(viewModel.skills.find((skill) => skill.id === 'obsidian-run-summary
 assert.equal(viewModel.runs[0].tone, 'green');
 assert.equal(Object.isFrozen(viewModel.agents[0]), true);
 assert.throws(() => { viewModel.agents[0].name = 'mutated'; }, TypeError);
+
+const idleInteraction = createPhase2DashboardInteractionModel(viewModel);
+assert.equal(idleInteraction.runtime.ready, true);
+assert.equal(idleInteraction.runtime.actionLabel, 'Ready');
+assert.equal(idleInteraction.controls.find((control) => control.id === 'load').disabled, false);
+assert.equal(idleInteraction.controls.find((control) => control.id === 'write-run-summary').disabled, true);
+assert.equal(Object.isFrozen(idleInteraction.controls[0]), true);
+
+const loadingInteraction = createPhase2DashboardInteractionModel(viewModel, { loadingAction: 'refresh' });
+assert.equal(loadingInteraction.runtime.loading, true);
+assert.equal(loadingInteraction.runtime.actionLabel, 'Refreshing status / usage');
+assert.equal(loadingInteraction.controls.every((control) => control.disabled), true);
+assert.equal(loadingInteraction.controls.find((control) => control.id === 'refresh').loading, true);
+
+const errorInteraction = createPhase2DashboardInteractionModel(viewModel, { error: new Error('network down') });
+assert.equal(errorInteraction.runtime.error, 'network down');
+
+const obsidianInteraction = createPhase2DashboardInteractionModel(createPhase2DashboardViewModel({ ...dashboard, obsidian: { available: true, targetFolder: 'Londi Agent OS/Runs/' } }));
+assert.equal(obsidianInteraction.controls.find((control) => control.id === 'write-run-summary').disabled, false);
 
 const refreshRequests = createPhase2DashboardApiRequests({ refresh: true, projectId: 'Client AI OS' });
 assert.equal(refreshRequests.find((request) => request.id === 'load-agents').path, '/agents?refresh=true');
