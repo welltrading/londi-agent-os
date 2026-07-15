@@ -19,10 +19,11 @@ Project-based work is represented by `ProjectWorkspace`: every project can bind 
 
 The UI must call Local API/HostConnector contracts only; it must not call local CLIs or write Obsidian files directly.
 
-`getUiBootstrapModel()` exposes a `phase2DashboardRuntime` controller. It starts from a local snapshot and performs Local API calls only when the UI explicitly invokes `load()`, `refresh()`, or `writeRunSummary()`.
+`getUiBootstrapModel()` exposes both `phase2DashboardRuntime` and `phase2DashboardController`. The runtime starts from a local snapshot and performs Local API calls only when explicitly invoked. The controller is the UI-facing button/action bridge and returns a frozen interaction model after every action.
 
-- `load()` fetches agents, skills, projects, and Obsidian status.
-- `refresh()` repeats the load with the refresh flag for agent/usage and Obsidian status.
-- `writeRunSummary()` posts the minimal run summary to Local API and updates the dashboard view model from the returned run.
+- `phase2DashboardController.dispatch('load')` fetches agents, skills, projects, and Obsidian status through the runtime.
+- `phase2DashboardController.dispatch('refresh')` repeats the load with the refresh flag for agent/usage and Obsidian status.
+- `phase2DashboardController.dispatch('write-run-summary', { input })` posts the minimal run summary through Local API, generates an idempotency key when needed, and updates the dashboard view model from the returned run.
+- Unknown controls and runtime failures render as inline interaction-state errors instead of adding direct side effects to the UI.
 
-`createPhase2DashboardInteractionModel()` wraps the view model with UI-ready runtime state and control descriptors for Load, Refresh, and Write Run Summary. It exposes loading, last action, and error labels so the visual dashboard can wire buttons to `phase2DashboardRuntime` without adding CLI, filesystem, polling, or direct Obsidian behavior to the UI.
+`createPhase2DashboardInteractionModel()` wraps the view model with UI-ready runtime state and control descriptors for Load, Refresh, and Write Run Summary. It exposes loading, last action, and error labels so the visual dashboard can wire buttons to `phase2DashboardController` without adding CLI, filesystem, polling, or direct Obsidian behavior to the UI.

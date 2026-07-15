@@ -95,6 +95,51 @@ export function createPhase2DashboardInteractionModel(viewModel = createPhase2Da
   });
 }
 
+export function createPhase2DashboardController({ runtime, createIdempotencyKey = createDashboardIdempotencyKey } = {}) {
+  if (!runtime || typeof runtime.snapshot !== 'function' || typeof runtime.load !== 'function' || typeof runtime.refresh !== 'function' || typeof runtime.writeRunSummary !== 'function') {
+    throw new Phase2DashboardError('Phase 2 dashboard controller requires a runtime.', { missing: 'runtime' });
+  }
+  if (typeof createIdempotencyKey !== 'function') throw new Phase2DashboardError('Phase 2 dashboard controller requires an idempotency key factory.', { missing: 'createIdempotencyKey' });
+
+  let viewModel = runtime.snapshot();
+  let state = { loadingAction: null, lastAction: null, error: null };
+
+  const snapshot = () => createPhase2DashboardInteractionModel(viewModel, state);
+  const runAction = async (actionId, operation) => {
+    state = { loadingAction: actionId, lastAction: state.lastAction, error: null };
+    try {
+      const result = await operation();
+      viewModel = result?.dashboard ?? result;
+      state = { loadingAction: null, lastAction: actionId, error: null };
+      return snapshot();
+    } catch (error) {
+      state = { loadingAction: null, lastAction: state.lastAction, error };
+      return snapshot();
+    }
+  };
+
+  return Object.freeze({
+    snapshot,
+    load() {
+      return runAction('load', () => runtime.load({ refresh: false }));
+    },
+    refresh() {
+      return runAction('refresh', () => runtime.refresh());
+    },
+    writeRunSummary({ input, idempotencyKey } = {}) {
+      const key = idempotencyKey ?? createIdempotencyKey(input);
+      return runAction('write-run-summary', () => runtime.writeRunSummary({ input, idempotencyKey: key }));
+    },
+    dispatch(controlId, options = {}) {
+      if (controlId === 'load') return this.load();
+      if (controlId === 'refresh') return this.refresh();
+      if (controlId === 'write-run-summary') return this.writeRunSummary(options);
+      state = { loadingAction: null, lastAction: state.lastAction, error: new Phase2DashboardError('Unknown Phase 2 dashboard control.', { controlId }) };
+      return Promise.resolve(snapshot());
+    }
+  });
+}
+
 export function createPhase2DashboardRuntime({ apiClient, fetchImpl = globalThis.fetch, now = () => new Date().toISOString(), requestIdPrefix = 'phase2-dashboard' } = {}) {
   if (!apiClient || typeof apiClient.createRequest !== 'function') throw new Phase2DashboardError('Phase 2 dashboard runtime requires an API client.', { missing: 'apiClient' });
   if (typeof fetchImpl !== 'function') throw new Phase2DashboardError('Phase 2 dashboard runtime requires a fetch implementation.', { missing: 'fetch' });
@@ -182,6 +227,11 @@ async function fetchApiResource(fetchImpl, request, { expectedStatus = 200 } = {
 
 function metric(id, label, value, tone) {
   return { id, label, value, tone };
+}
+
+function createDashboardIdempotencyKey(input = {}) {
+  const runId = input?.id ?? input?.runId ?? 'run';
+  return `phase2-dashboard-${String(runId).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-obsidian-summary`;
 }
 
 function control(id, label, disabled, loading, description) {

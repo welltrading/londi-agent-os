@@ -5,6 +5,7 @@ import {
   createPhase2DashboardApiRequests,
   createPhase2DashboardModel,
   createPhase2DashboardRuntime,
+  createPhase2DashboardController,
   createPhase2DashboardViewModel,
   createPhase2DashboardInteractionModel,
   loadPhase2DashboardFromApi,
@@ -58,6 +59,44 @@ assert.equal(errorInteraction.runtime.error, 'network down');
 
 const obsidianInteraction = createPhase2DashboardInteractionModel(createPhase2DashboardViewModel({ ...dashboard, obsidian: { available: true, targetFolder: 'Londi Agent OS/Runs/' } }));
 assert.equal(obsidianInteraction.controls.find((control) => control.id === 'write-run-summary').disabled, false);
+
+let resolveLoad;
+const controllerCalls = [];
+const loadedControllerView = createPhase2DashboardViewModel({ ...dashboard, obsidian: { available: true, targetFolder: 'Londi Agent OS/Runs/' } });
+const controller = createPhase2DashboardController({
+  runtime: {
+    snapshot: () => viewModel,
+    load: (options) => {
+      controllerCalls.push(['load', options]);
+      return new Promise((resolve) => { resolveLoad = () => resolve(loadedControllerView); });
+    },
+    refresh: () => {
+      controllerCalls.push(['refresh']);
+      return Promise.resolve(loadedControllerView);
+    },
+    writeRunSummary: (options) => {
+      controllerCalls.push(['writeRunSummary', options]);
+      return Promise.resolve({ run: { id: 'run-2' }, dashboard: loadedControllerView });
+    }
+  },
+  createIdempotencyKey: (input) => `idem-${input.id}`
+});
+assert.equal(controller.snapshot().runtime.ready, true);
+const pendingLoad = controller.dispatch('load');
+assert.equal(controller.snapshot().runtime.loadingAction, 'load');
+resolveLoad();
+const loadedInteraction = await pendingLoad;
+assert.equal(loadedInteraction.obsidianLabel, 'Obsidian available');
+assert.equal(loadedInteraction.runtime.lastAction, 'load');
+assert.deepEqual(controllerCalls[0], ['load', { refresh: false }]);
+const refreshedInteraction = await controller.dispatch('refresh');
+assert.equal(refreshedInteraction.runtime.lastAction, 'refresh');
+const writtenInteraction = await controller.dispatch('write-run-summary', { input: { id: 'run-2', title: 'API summary' } });
+assert.equal(writtenInteraction.runtime.lastAction, 'write-run-summary');
+assert.equal(controllerCalls.at(-1)[1].idempotencyKey, 'idem-run-2');
+const unknownInteraction = await controller.dispatch('missing-control');
+assert.equal(unknownInteraction.runtime.error, 'Unknown Phase 2 dashboard control.');
+assert.throws(() => createPhase2DashboardController({ runtime: {} }), Phase2DashboardError);
 
 const refreshRequests = createPhase2DashboardApiRequests({ refresh: true, projectId: 'Client AI OS' });
 assert.equal(refreshRequests.find((request) => request.id === 'load-agents').path, '/agents?refresh=true');
