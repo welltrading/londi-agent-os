@@ -102,3 +102,10 @@ Append-only log of significant project decisions.
 - **Reason:** Londi needs a daily operator surface that is not only a `docs/previews` artifact, while keeping the PONYTAIL slice small and avoiding a new UI framework/build system.
 - **Implementation:** The entrypoint imports `createRuntimeDashboardApp()` and the serve script hosts repository static files from `127.0.0.1:3211`, with `--check` validation available through `npm run check:runtime-dashboard`.
 - **Guardrail:** The serve script does not proxy Local API, read secrets, or perform writes; the UI still has no polling/bootstrap network calls and all live side effects go through Local API / HostConnector.
+
+## 2026-07-16 — Runtime command starts Local API and dashboard together
+
+- **Decision:** Add `npm run serve:runtime` as the one-command development runtime for Londi's operator dashboard.
+- **Reason:** Daily use should not require manually starting the Local API and UI in two shells, but the slice should stay PONYTAIL-small without a new process manager or UI framework.
+- **Implementation:** `scripts/serve-runtime.mjs` validates `LONDI_AGENT_OS_LOCAL_API_TOKEN`, starts `apps/local-api/src/index.js --service` and `scripts/serve-runtime-dashboard.mjs` as child processes, sanitizes child output, and stops both children on shutdown.
+- **Guardrail:** The command does not print bearer tokens, proxy Local API, read browser secrets, or perform runtime writes itself; live side effects remain behind Local API / HostConnector.

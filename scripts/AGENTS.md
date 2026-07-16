@@ -13,7 +13,8 @@ Scripts should be deterministic local checks used by package scripts or CI.
 - Do not require secrets.
 - Do not mutate source files unless explicitly documented as a generator/update script.
 - Keep output clear for CI failures.
-- Runtime Dashboard serve scripts may host static repository files only; they must not proxy Local API, read secrets, or perform runtime writes.
+- Runtime Dashboard static serve scripts may host static repository files only; they must not proxy Local API, read secrets, or perform runtime writes.
+- `serve-runtime.mjs` may orchestrate the Local API service plus static Runtime Dashboard UI as child processes, but must not print bearer tokens, proxy Local API, or perform runtime writes itself.
 
 ## Work Guidance
 

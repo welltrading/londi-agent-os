@@ -152,6 +152,14 @@ assert.match(runtimeEntrypoint, /createRuntimeDashboardApp/);
 assert.match(runtimeEntrypoint, /npm run serve:runtime-dashboard/);
 assert.doesNotMatch(runtimeEntrypoint, /createPhase2DashboardDomBinder/);
 
+const runtimeServeScript = readFileSync('scripts/serve-runtime.mjs', 'utf8');
+assert.match(runtimeServeScript, /apps\/local-api\/src\/index\.js/);
+assert.match(runtimeServeScript, /scripts\/serve-runtime-dashboard\.mjs/);
+assert.match(runtimeServeScript, /assertValidLocalApiToken/);
+assert.match(runtimeServeScript, /sanitizeForLog/);
+assert.doesNotMatch(runtimeServeScript, /access_token=/);
+assert.doesNotMatch(runtimeServeScript, /token=/);
+
 console.log('UI shell tests OK');
 
 function collectFiles(dir) {
