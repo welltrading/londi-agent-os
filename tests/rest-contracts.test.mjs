@@ -55,6 +55,8 @@ const response = createResourceResponse({ requestId: 'req-1', resourceVersion: '
 assert.equal(response.headers.etag, 'rv-1');
 assert.equal(response.body.requestId, 'req-1');
 assert.equal(JSON.stringify(response).includes('secret-token-value'), false);
+const artifactResponse = createResourceResponse({ requestId: 'req-artifact', resourceVersion: 'rv-artifact', data: { artifactPath: 'data/obsidian-vault/Londi Agent OS/Runs/2026-07-16__run-live-obsidian-connect__live-obsidian-connection.md' } });
+assert.equal(artifactResponse.body.data.artifactPath.endsWith('live-obsidian-connection.md'), true);
 
 const validationError = createRestError({ code: ERROR_CODES.validation, requestId: 'req-2', message: 'Bad token=secret-token-value', validation: [{ field: 'name', message: 'contains sk-test-secret-value' }] });
 assert.equal(validationError.details.statusCode, 400);

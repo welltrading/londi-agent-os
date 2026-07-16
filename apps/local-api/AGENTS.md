@@ -14,6 +14,7 @@ Local API and service shell. This package exposes stable API/service boundaries 
 
 - HostConnector is the only local-machine capability boundary for Phase 2.
 - Obsidian writes must go through HostConnector.
+- `LONDI_AGENT_OS_OBSIDIAN_ROOT` may configure the first HostConnector vault root for the service process; bearer tokens remain outside config.
 - Agent status/usage collection must show source/cached/lastUpdated and must not fake API billing for subscription CLI tools.
 - Manual refresh is on-demand only; no background polling.
 - Writes/commands must stay idempotency-aware in REST contract metadata.

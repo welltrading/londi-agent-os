@@ -42,6 +42,8 @@ This keeps every run, status view, and Obsidian summary anchored to a project co
 
 The UI does not call CLI tools or write Obsidian files directly.
 
+The service process can connect the first HostConnector vault root from `LONDI_AGENT_OS_OBSIDIAN_ROOT`. The value is runtime configuration only, not a secret, and bearer tokens remain outside local config.
+
 ## Refresh policy
 
 No background polling. Refresh is on dashboard load or manual refresh.

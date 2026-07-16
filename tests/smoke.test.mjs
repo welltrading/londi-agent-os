@@ -9,7 +9,7 @@ import {
   loadDefaultLocalConfig,
   validateLocalConfig
 } from '../packages/contracts/src/index.js';
-import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, sanitizeForLog } from '../apps/local-api/src/index.js';
+import { getHealthModel, createServiceLifecycle, getWindowsServiceInstallPlan, createCredentialManagerTokenProvider, createLogger, sanitizeForLog, createLocalApiConfigFromEnv } from '../apps/local-api/src/index.js';
 import { getUiBootstrapModel } from '../apps/ui/src/index.js';
 import {
   RUN_STATES,
@@ -287,6 +287,8 @@ assert.equal(config.paths.runs, './data/runs');
 assert.equal(config.ports.localApi, 3210);
 assert.equal(config.retention.completedRunDays, 7);
 assert.deepEqual(config.obsidian.roots, []);
+assert.deepEqual(createLocalApiConfigFromEnv({ LONDI_AGENT_OS_OBSIDIAN_ROOT: './data/obsidian-vault' }).obsidian.roots, ['./data/obsidian-vault']);
+assert.deepEqual(createLocalApiConfigFromEnv({}).obsidian.roots, []);
 assert.throws(
   () => validateLocalConfig({ ...config, paths: { ...config.paths, runs: '../outside' } }),
   (error) => error instanceof LocalConfigValidationError

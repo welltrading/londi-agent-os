@@ -109,3 +109,10 @@ Append-only log of significant project decisions.
 - **Reason:** Daily use should not require manually starting the Local API and UI in two shells, but the slice should stay PONYTAIL-small without a new process manager or UI framework.
 - **Implementation:** `scripts/serve-runtime.mjs` validates `LONDI_AGENT_OS_LOCAL_API_TOKEN`, starts `apps/local-api/src/index.js --service` and `scripts/serve-runtime-dashboard.mjs` as child processes, sanitizes child output, and stops both children on shutdown.
 - **Guardrail:** The command does not print bearer tokens, proxy Local API, read browser secrets, or perform runtime writes itself; live side effects remain behind Local API / HostConnector.
+
+## 2026-07-16 — Local API service connects Obsidian root from environment
+
+- **Decision:** Configure the Local API service's first HostConnector Obsidian root from `LONDI_AGENT_OS_OBSIDIAN_ROOT`.
+- **Reason:** Londi needs the live dashboard to move from `Obsidian unavailable` to real Run Summary writes without storing local machine paths or secrets in committed config.
+- **Implementation:** `createLocalApiConfigFromEnv()` starts from the default local config and injects the env-provided Obsidian root before service startup.
+- **Guardrail:** The variable carries a vault path only, not a bearer token or secret; UI still writes Obsidian only through Local API / HostConnector.

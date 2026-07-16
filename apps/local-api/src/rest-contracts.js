@@ -191,9 +191,19 @@ function redactSensitiveKeys(value) {
     ]));
   }
   if (typeof value === 'string') {
-    return sanitizeForLog(value);
+    return sanitizeApiString(value);
   }
   return value;
+}
+
+function sanitizeApiString(value) {
+  return String(value)
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]')
+    .replace(/ghp_[A-Za-z0-9]{20,}/g, '[REDACTED]')
+    .replace(/xox[baprs]-[A-Za-z0-9-]{20,}/g, '[REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/(token|password|secret|credential|api[_-]?key)=([^\s&]+)/gi, '$1=[REDACTED]')
+    .replace(/[\r\n\u2028\u2029]+/g, ' ');
 }
 
 function deepFreezeRest(value) {
