@@ -354,9 +354,20 @@ assert.equal(startedHealth.startupDeadlineMs, 30000);
 assert.equal(startedHealth.security.allowedOrigin, 'http://127.0.0.1:3211');
 assert.equal(startedHealth.security.credentialSource, 'windows-credential-manager');
 assert.equal(startedHealth.security.tokenBytes, 32);
-const healthResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { authorization: `Bearer ${TEST_TOKEN}`, origin: 'http://127.0.0.1:3211' } });
+const preflightResponse = await fetch('http://127.0.0.1:3212/api/v1/agents', {
+  method: 'OPTIONS',
+  headers: {
+    origin: 'http://127.0.0.1:3211',
+    'access-control-request-method': 'GET',
+    'access-control-request-headers': 'authorization, content-type, x-request-id'
+  }
+});
+assert.equal(preflightResponse.status, 204);
+assert.equal(preflightResponse.headers.get('access-control-allow-origin'), 'http://127.0.0.1:3211');
+assert.equal(preflightResponse.headers.get('access-control-allow-headers').includes('x-request-id'), true);
+const healthResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { authorization: `Bearer ${TEST_TOKEN}`, origin: 'http://127.0.0.1:3211', 'x-request-id': 'ui-smoke-health' } });
 assert.equal(healthResponse.status, 200);
-assert.match(healthResponse.headers.get('x-request-id'), /^req_/);
+assert.equal(healthResponse.headers.get('x-request-id'), 'ui-smoke-health');
 const healthText = await healthResponse.text();
 assert.equal(healthText.includes(TEST_TOKEN), false);
 const missingTokenResponse = await fetch('http://127.0.0.1:3212/system/health', { headers: { origin: 'http://127.0.0.1:3211' } });

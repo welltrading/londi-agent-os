@@ -65,3 +65,11 @@ Append-only log of significant project decisions.
 - **Reason:** A host renderer needs a narrow mount/bind/rerender boundary without giving DOM code Local API, HostConnector, CLI, filesystem, secret, or Obsidian write access.
 - **Implementation:** `createPhase2DashboardDomBinder()` mounts adapter HTML into a provided target, binds enabled dispatch-control buttons to `screen.click(...)`, re-renders after dispatch, and exposes `mount()`, `refresh()`, `unmount()`, and `isMounted()`.
 - **Guardrail:** Controlled DOM mutation only for mount/rerender/unmount; no polling, no bootstrap network calls, no raw DOM event forwarding by default, and no direct Local API/HostConnector/filesystem/CLI/Obsidian access.
+
+## 2026-07-16 — Live Phase 2 dashboard preview verified through Local API
+
+- **Decision:** Add a live Phase 2 dashboard preview that mounts the existing DOM binder in the browser and calls the Local API only after explicit user clicks.
+- **Reason:** Londi needs to see a working result beyond the static visual adapter while preserving the Dashboard/UI → Local API → HostConnector boundary.
+- **Implementation:** `docs/previews/live-dashboard-preview.html` accepts a bearer token/base URL, mounts `createPhase2DashboardDomBinder()`, and dispatches Load/Refresh/Write Run Summary through the Local API. Browser-safe `--build-check` guards were added for UI/contracts public exports.
+- **Evidence:** Manual live verification showed Load updating dashboard state and Write Run Summary creating `Londi Agent OS/Runs/2026-07-16__run-phase2-live-preview__live-dashboard-run-summary.md` through the temporary Obsidian vault flow.
+- **Guardrail:** No polling, no bootstrap network calls, no direct UI CLI/filesystem/secret/Obsidian access, and Local API CORS explicitly allows the UI `x-request-id` header.

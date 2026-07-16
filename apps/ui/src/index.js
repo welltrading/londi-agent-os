@@ -43,4 +43,4 @@ export { ASM_SECTIONS, ASM_ACTION_STATE, ASM_VISUAL_TOKENS, AuditSettingsMainten
 export { NOTIFICATION_REMINDER_MINUTES, NOTIFICATION_ESCALATION_MINUTES, NOTIFICATION_ACTIONS, NOTIFICATION_FORBIDDEN_ACTIONS, WindowsNotificationError, createWindowsNotification, scheduleNotificationFollowups, handleNotificationAction, assertNotificationIsNonSensitive } from './windows-notifications.js';
 export { UI_E2E_REQUIRED_TEMPLATES, UI_E2E_CORE_SCREENS, UI_E2E_WCAG_LEVEL, UiE2eBaselineError, createUiE2eBaselineScenario, createUiE2eCoreScreens, evaluateUiE2eBaseline, createReconnectScenario, createStaleRevisionScenario, createLongLogsScenario, evaluateWcagBaseline, assertUiE2eBaselinePasses } from './ui-e2e-baseline.js';
 
-if (process.argv.includes('--build-check')) console.log(`${UI_PACKAGE} build OK`);
+if (globalThis.process?.argv?.includes('--build-check')) console.log(`${UI_PACKAGE} build OK`);

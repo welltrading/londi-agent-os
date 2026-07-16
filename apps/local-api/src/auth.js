@@ -57,7 +57,7 @@ export function createLocalApiSecurity(options = {}) {
     }
     response.setHeader('access-control-allow-origin', allowedOrigin);
     response.setHeader('vary', 'origin');
-    response.setHeader('access-control-allow-headers', 'authorization, content-type, idempotency-key');
+    response.setHeader('access-control-allow-headers', 'authorization, content-type, idempotency-key, x-request-id');
     response.setHeader('access-control-allow-methods', 'GET, POST, PATCH, PUT, OPTIONS');
     return true;
   }

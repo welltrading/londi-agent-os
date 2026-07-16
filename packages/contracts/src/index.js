@@ -50,4 +50,4 @@ export {
   validatePhase2RuntimeContracts
 } from './phase2-runtime.js';
 
-if (process.argv.includes('--build-check')) console.log(`${CONTRACTS_PACKAGE} build OK`);
+if (globalThis.process?.argv?.includes('--build-check')) console.log(`${CONTRACTS_PACKAGE} build OK`);
