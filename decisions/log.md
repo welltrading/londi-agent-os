@@ -73,3 +73,18 @@ Append-only log of significant project decisions.
 - **Implementation:** `docs/previews/live-dashboard-preview.html` accepts a bearer token/base URL, mounts `createPhase2DashboardDomBinder()`, and dispatches Load/Refresh/Write Run Summary through the Local API. Browser-safe `--build-check` guards were added for UI/contracts public exports.
 - **Evidence:** Manual live verification showed Load updating dashboard state and Write Run Summary creating `Londi Agent OS/Runs/2026-07-16__run-phase2-live-preview__live-dashboard-run-summary.md` through the temporary Obsidian vault flow.
 - **Guardrail:** No polling, no bootstrap network calls, no direct UI CLI/filesystem/secret/Obsidian access, and Local API CORS explicitly allows the UI `x-request-id` header.
+
+## 2026-07-16 — Runtime Dashboard UI slice approved for build
+
+- **Decision:** Build the first official Runtime Dashboard screen under `apps/ui` as a thin app wrapper over the verified Phase 2 dashboard model and DOM binder.
+- **Spec:** `specs/2026-07-16-runtime-dashboard-ui-slice.md`.
+- **Scope:** Internal Operator Dashboard for Londi only; live Load/Refresh through Local API and Write Run Summary through HostConnector/Obsidian remain the first safe action path.
+- **Non-goals:** No React/Next/new UI framework, no duplicated preview UI logic, no polling, no bootstrap network calls, no Start Codex Task, no Claude Review, no Hermes knowledge runtime, and no client/SaaS features in this slice.
+- **Guardrail:** Preserve `Dashboard UI -> Local API -> HostConnector -> local tools / Obsidian`; UI must not call CLI, filesystem, secrets, or Obsidian directly.
+
+## 2026-07-16 — Runtime Dashboard app wrapper implemented with PONYTAIL gate
+
+- **Decision:** Implement the Runtime Dashboard app wrapper as the smallest working slice: one new `apps/ui/src/runtime-dashboard.js` module, one export surface update, and targeted UI shell coverage.
+- **Reason:** PONYTAIL applies to this build: prefer a thin wrapper over existing Phase 2 dashboard runtime and DOM binder instead of adding a framework, duplicate UI logic, or new architecture.
+- **Implementation:** `createRuntimeDashboardApp()` lazily creates the bootstrap model only on mount, mounts through `createPhase2DashboardDomBinder()`, exposes `mount()`, `refresh()`, `unmount()`, `isMounted()`, and `getStatus()`, and provides a default `Write Run Summary` safe-action input.
+- **Guardrail:** No polling, no bootstrap/module-import network calls, no direct UI CLI/filesystem/secret/Obsidian access, and the Local API / HostConnector boundary remains the only live side-effect path.

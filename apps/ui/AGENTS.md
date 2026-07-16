@@ -8,6 +8,7 @@ Local UI shell and dashboard/client-state models.
 
 - `src/dashboard.js` owns MVP dashboard buckets/actions.
 - `src/phase2-dashboard.js` owns Phase 2 live dashboard model.
+- `src/runtime-dashboard.js` owns the official Runtime Dashboard app wrapper over the Phase 2 DOM binder.
 - `src/index.js` owns UI bootstrap exports.
 
 ## Local Contracts
@@ -17,6 +18,7 @@ Local UI shell and dashboard/client-state models.
 - Project-based work should display `ProjectWorkspace` with all four agents when relevant.
 - Phase 2 dashboard must expose agents, skills, projects, runs, refresh, and Obsidian Run Summary action model.
 - Phase 2 DOM binding may mount static dashboard HTML into a provided target and bind dispatch-only controls, but it must not call Local API, HostConnector, CLIs, secrets, filesystem, or Obsidian directly.
+- Runtime Dashboard app code should stay a thin wrapper around bootstrap + DOM binder; apply the PONYTAIL minimalism gate before adding files, abstractions, or dependencies.
 
 ## Work Guidance
 

@@ -9,6 +9,9 @@ import {
   createApiClient,
   createClientState,
   createMemoryTokenProvider,
+  createRuntimeDashboardApp,
+  createRuntimeDashboardBootstrapModel,
+  createRuntimeDispatchOptions,
   createSseClient,
   getUiBootstrapModel,
   setAuthToken,
@@ -32,6 +35,9 @@ assert.equal(bootstrap.phase2DashboardVisualAdapter.bindings.every((binding) => 
 assert.equal(bootstrap.phase2DashboardVisualAdapter.renderPolicy.staticHtmlOnly, true);
 assert.equal(bootstrap.phase2DashboardDomBinder.binderId, 'phase2-dashboard-dom-binder');
 assert.equal(bootstrap.phase2DashboardDomBinder.isMounted(), false);
+assert.equal(bootstrap.runtimeDashboard.appId, 'runtime-dashboard-app');
+assert.equal(bootstrap.runtimeDashboard.isMounted(), false);
+assert.equal(bootstrap.runtimeDashboard.getStatus().renderPolicy.mountsThroughDomBinder, true);
 assert.equal(bootstrap.phase2DashboardRuntime.snapshot().title, 'Londi Agent OS');
 assert.equal(bootstrap.phase2DashboardRuntime.snapshot().agents.length, 4);
 assert.equal(validateAccessibilityModel(createAccessibilityModel()), true);
@@ -72,6 +78,69 @@ const uiSrc = collectFiles('apps/ui/src').map((file) => readFileSync(file, 'utf8
 assert.equal(assertUiDoesNotInvokeCli(uiSrc), true);
 assert.throws(() => assertUiDoesNotInvokeCli('import { spawn } from "node:child_process"; spawn("cmd.exe")'));
 assert.equal(/process\.env\.[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|KEY)/i.test(uiSrc), false);
+
+let runtimeBootstrapCalls = 0;
+let runtimeBinderMounts = 0;
+let runtimeRefreshes = 0;
+let runtimeUnmounts = 0;
+const runtimeApp = createRuntimeDashboardApp({
+  documentRef: { querySelector: () => ({ innerHTML: '' }) },
+  target: '#runtime-root',
+  token: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_',
+  baseUrl: 'http://127.0.0.1:3210/api/v1',
+  fetchImpl: () => { throw new Error('runtime dashboard must not fetch before click'); },
+  createBootstrapModel: (options) => {
+    runtimeBootstrapCalls += 1;
+    assert.equal(options.phase2DashboardTarget, '#runtime-root');
+    assert.equal(options.token, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_');
+    return { phase2DashboardScreen: { render: () => ({}), click: async () => ({}) } };
+  },
+  createDomBinder: ({ screen, documentRef, target, createDispatchOptions }) => {
+    assert.equal(typeof screen.render, 'function');
+    assert.equal(typeof documentRef.querySelector, 'function');
+    assert.equal(target, '#runtime-root');
+    assert.equal(createDispatchOptions('refresh').input, undefined);
+    assert.equal(createDispatchOptions('write-run-summary').input.id, 'run-runtime-dashboard-summary');
+    return {
+      binderId: 'phase2-dashboard-dom-binder',
+      mount({ target: nextTarget } = {}) {
+        runtimeBinderMounts += 1;
+        return { binderId: 'phase2-dashboard-dom-binder', mounted: true, target: nextTarget, bindingCount: 3, activeBindingCount: 2, renderPolicy: { noPolling: true } };
+      },
+      refresh() {
+        runtimeRefreshes += 1;
+        return { binderId: 'phase2-dashboard-dom-binder', mounted: true, target: '#runtime-root', bindingCount: 3, activeBindingCount: 2, renderPolicy: { noPolling: true } };
+      },
+      unmount({ clear } = {}) {
+        runtimeUnmounts += 1;
+        assert.equal(clear, false);
+        return { binderId: 'phase2-dashboard-dom-binder', mounted: false, target: '#runtime-root' };
+      },
+      isMounted: () => runtimeBinderMounts > runtimeUnmounts
+    };
+  }
+});
+assert.equal(runtimeBootstrapCalls, 0);
+assert.equal(runtimeApp.appId, 'runtime-dashboard-app');
+assert.equal(runtimeApp.isMounted(), false);
+assert.equal(runtimeApp.getStatus().renderPolicy.noBootstrapNetworkCall, true);
+assert.throws(() => runtimeApp.refresh());
+const runtimeMounted = runtimeApp.mount();
+assert.equal(runtimeBootstrapCalls, 1);
+assert.equal(runtimeMounted.mounted, true);
+assert.equal(runtimeMounted.bindingCount, 3);
+assert.equal(runtimeMounted.renderPolicy.usesLocalApiBoundary, true);
+assert.equal(runtimeApp.isMounted(), true);
+const runtimeRefreshed = runtimeApp.refresh();
+assert.equal(runtimeRefreshes, 1);
+assert.equal(runtimeRefreshed.activeBindingCount, 2);
+const runtimeUnmounted = runtimeApp.unmount({ clear: false });
+assert.equal(runtimeUnmounted.mounted, false);
+assert.equal(runtimeApp.isMounted(), false);
+assert.equal(runtimeUnmounts, 1);
+assert.equal(createRuntimeDispatchOptions('refresh').input, undefined);
+assert.equal(createRuntimeDispatchOptions('write-run-summary').input.skillId, 'obsidian-run-summary');
+assert.throws(() => createRuntimeDashboardApp({ createBootstrapModel: null }));
 
 console.log('UI shell tests OK');
 
