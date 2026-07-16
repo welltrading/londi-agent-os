@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Londi Agent OS — Runtime Dashboard Preview</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "@londi-agent-os/contracts": "/packages/contracts/src/index.js?v=runtime-dashboard-preview-1"
+      }
+    }
+  </script>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#08111f; color:#e5eefc; }
+    body { margin:0; min-height:100vh; background: radial-gradient(circle at top right,#1f3b73 0,#0b1424 42%,#070b13 100%); }
+    main { max-width:1180px; margin:0 auto; padding:40px 24px 64px; }
+    .runtime-note, .runtime-controls { border:1px solid rgba(148,163,184,.28); background:rgba(15,23,42,.72); border-radius:20px; padding:16px 18px; margin-bottom:22px; color:#cbd5e1; }
+    .runtime-controls { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:end; direction:ltr; text-align:left; }
+    .runtime-controls label { display:grid; gap:6px; color:#94a3b8; font-size:13px; }
+    .runtime-controls input { width:100%; border:1px solid rgba(148,163,184,.28); border-radius:12px; padding:11px 12px; background:#0f172a; color:#e5eefc; }
+    .runtime-status { min-height:20px; margin:0 0 18px; color:#93c5fd; direction:ltr; text-align:left; }
+    .phase2-dashboard { direction:ltr; text-align:left; display:grid; gap:20px; }
+    .phase2-dashboard__header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; padding:28px; border:1px solid rgba(148,163,184,.24); border-radius:26px; background:rgba(15,23,42,.82); box-shadow:0 24px 80px rgba(0,0,0,.25); }
+    h1 { margin:0 0 8px; font-size:38px; letter-spacing:-.04em; }
+    h2 { margin:0 0 14px; font-size:18px; color:#e2e8f0; }
+    p { margin:0; color:#94a3b8; }
+    dl { margin:0; display:grid; grid-template-columns:auto auto; gap:8px 14px; font-size:14px; }
+    dt { color:#64748b; } dd { margin:0; color:#e2e8f0; font-weight:700; }
+    [data-tone="green"] { color:#34d399; } [data-tone="blue"] { color:#60a5fa; } [data-tone="purple"] { color:#c084fc; } [data-tone="amber"] { color:#fbbf24; } [data-tone="red"] { color:#fb7185; }
+    .phase2-dashboard__alert { padding:14px 16px; border:1px solid rgba(251,113,133,.35); border-radius:16px; background:rgba(127,29,29,.28); color:#fecdd3; }
+    .phase2-dashboard__metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+    .phase2-dashboard__metrics article { padding:18px; border:1px solid rgba(148,163,184,.22); border-radius:20px; background:rgba(15,23,42,.68); }
+    .phase2-dashboard__metrics span { display:block; color:#94a3b8; font-size:13px; margin-bottom:8px; }
+    .phase2-dashboard__metrics strong { font-size:30px; }
+    .phase2-dashboard__toolbar { display:flex; gap:10px; padding:14px; border:1px solid rgba(148,163,184,.18); border-radius:18px; background:rgba(2,6,23,.56); }
+    button { border:0; border-radius:999px; padding:10px 16px; font-weight:800; color:#07111f; background:#93c5fd; cursor:pointer; }
+    button:disabled { opacity:.48; cursor:not-allowed; background:#64748b; color:#cbd5e1; }
+    .phase2-dashboard__section { padding:22px; border:1px solid rgba(148,163,184,.2); border-radius:22px; background:rgba(15,23,42,.62); }
+    .phase2-dashboard__section > div { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    .phase2-dashboard__item { display:flex; flex-direction:column; gap:6px; min-height:76px; padding:16px; border:1px solid rgba(148,163,184,.16); border-radius:16px; background:rgba(30,41,59,.58); }
+    .phase2-dashboard__item strong { color:#f8fafc; } .phase2-dashboard__item span { color:#94a3b8; font-size:13px; }
+    @media (max-width: 760px) { .runtime-controls { grid-template-columns:1fr; } .phase2-dashboard__header { flex-direction:column; } .phase2-dashboard__metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="runtime-note" dir="rtl" style="text-align:right">
+      תצוגת Runtime Dashboard: הדף הזה מרכיב את <code>createRuntimeDashboardApp()</code>, לא את ה-DOM Binder ישירות. אין polling ואין קריאת רשת בזמן טעינת הדף.
+    </div>
+    <section class="runtime-controls" aria-label="Runtime Local API connection">
+      <label>Local API token
+        <input id="token" type="password" autocomplete="off" placeholder="Paste bearer token from Credential Manager / dev shell" />
+      </label>
+      <label>Base URL
+        <input id="base-url" type="url" value="http://127.0.0.1:3210/api/v1" />
+      </label>
+      <button id="mount" type="button">Mount Runtime Dashboard</button>
+    </section>
+    <p id="runtime-status" class="runtime-status">Waiting for token. Serve this file from http://127.0.0.1:3211.</p>
+    <div id="phase2-dashboard-root"></div>
+  </main>
+  <script type="module">
+    import { createRuntimeDashboardApp } from '/apps/ui/src/index.js?v=runtime-dashboard-preview-1';
+
+    const status = document.querySelector('#runtime-status');
+    const tokenInput = document.querySelector('#token');
+    const baseUrlInput = document.querySelector('#base-url');
+    const mountButton = document.querySelector('#mount');
+    let app = null;
+
+    mountButton.addEventListener('click', () => {
+      const token = tokenInput.value.trim();
+      const baseUrl = baseUrlInput.value.trim();
+      if (!token) {
+        status.textContent = 'Token is required before mounting.';
+        return;
+      }
+      app?.unmount?.();
+      app = createRuntimeDashboardApp({ token, baseUrl, documentRef: document, target: '#phase2-dashboard-root' });
+      const mounted = app.mount();
+      status.textContent = `Mounted ${mounted.appId} through ${mounted.binderId}. Click Load or Refresh to call ${baseUrl}.`;
+    });
+  </script>
+</body>
+</html>

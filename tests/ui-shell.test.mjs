@@ -142,6 +142,11 @@ assert.equal(createRuntimeDispatchOptions('refresh').input, undefined);
 assert.equal(createRuntimeDispatchOptions('write-run-summary').input.skillId, 'obsidian-run-summary');
 assert.throws(() => createRuntimeDashboardApp({ createBootstrapModel: null }));
 
+const runtimePreview = readFileSync('docs/previews/runtime-dashboard-preview.html', 'utf8');
+assert.match(runtimePreview, /createRuntimeDashboardApp/);
+assert.doesNotMatch(runtimePreview, /createPhase2DashboardDomBinder/);
+assert.match(runtimePreview, /No polling|אין polling/);
+
 console.log('UI shell tests OK');
 
 function collectFiles(dir) {

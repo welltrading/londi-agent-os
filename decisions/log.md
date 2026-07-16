@@ -88,3 +88,10 @@ Append-only log of significant project decisions.
 - **Reason:** PONYTAIL applies to this build: prefer a thin wrapper over existing Phase 2 dashboard runtime and DOM binder instead of adding a framework, duplicate UI logic, or new architecture.
 - **Implementation:** `createRuntimeDashboardApp()` lazily creates the bootstrap model only on mount, mounts through `createPhase2DashboardDomBinder()`, exposes `mount()`, `refresh()`, `unmount()`, `isMounted()`, and `getStatus()`, and provides a default `Write Run Summary` safe-action input.
 - **Guardrail:** No polling, no bootstrap/module-import network calls, no direct UI CLI/filesystem/secret/Obsidian access, and the Local API / HostConnector boundary remains the only live side-effect path.
+
+## 2026-07-16 — Runtime Dashboard preview uses official app wrapper
+
+- **Decision:** Add `docs/previews/runtime-dashboard-preview.html` as the live browser preview for the official Runtime Dashboard app wrapper.
+- **Reason:** The next verification step should exercise `createRuntimeDashboardApp()` directly instead of repeating the older demo that manually wired the Phase 2 DOM binder.
+- **Implementation:** The preview imports `createRuntimeDashboardApp()`, accepts a Local API bearer token/base URL, and mounts only after explicit user action.
+- **Guardrail:** Preview code remains a thin browser harness: no polling, no bootstrap network calls, no direct CLI/filesystem/secret/Obsidian access, and all live side effects still go through Local API / HostConnector.
