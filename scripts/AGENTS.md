@@ -13,6 +13,7 @@ Scripts should be deterministic local checks used by package scripts or CI.
 - Do not require secrets.
 - Do not mutate source files unless explicitly documented as a generator/update script.
 - Keep output clear for CI failures.
+- Runtime Dashboard serve scripts may host static repository files only; they must not proxy Local API, read secrets, or perform runtime writes.
 
 ## Work Guidance
 

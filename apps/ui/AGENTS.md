@@ -9,6 +9,7 @@ Local UI shell and dashboard/client-state models.
 - `src/dashboard.js` owns MVP dashboard buckets/actions.
 - `src/phase2-dashboard.js` owns Phase 2 live dashboard model.
 - `src/runtime-dashboard.js` owns the official Runtime Dashboard app wrapper over the Phase 2 DOM binder.
+- `runtime-dashboard.html` owns the static browser entrypoint for that Runtime Dashboard wrapper.
 - `src/index.js` owns UI bootstrap exports.
 
 ## Local Contracts

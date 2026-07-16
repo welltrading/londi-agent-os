@@ -147,6 +147,11 @@ assert.match(runtimePreview, /createRuntimeDashboardApp/);
 assert.doesNotMatch(runtimePreview, /createPhase2DashboardDomBinder/);
 assert.match(runtimePreview, /No polling|אין polling/);
 
+const runtimeEntrypoint = readFileSync('apps/ui/runtime-dashboard.html', 'utf8');
+assert.match(runtimeEntrypoint, /createRuntimeDashboardApp/);
+assert.match(runtimeEntrypoint, /npm run serve:runtime-dashboard/);
+assert.doesNotMatch(runtimeEntrypoint, /createPhase2DashboardDomBinder/);
+
 console.log('UI shell tests OK');
 
 function collectFiles(dir) {

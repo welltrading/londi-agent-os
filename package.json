@@ -19,7 +19,9 @@
     "security:scan": "node scripts/check-source-hygiene.mjs && node packages/adapters/verify-no-active-adapters.mjs && node tests/security-hardening.test.mjs",
     "check:windows": "node scripts/check-windows-baseline.mjs",
     "ci": "npm run lint && npm run type-check && npm run test:unit && npm run test:integration && npm run security:scan && npm run build && npm run check:windows",
-    "adapter:parity": "node scripts/check-adapter-contract-parity.mjs"
+    "adapter:parity": "node scripts/check-adapter-contract-parity.mjs",
+    "serve:runtime-dashboard": "node scripts/serve-runtime-dashboard.mjs",
+    "check:runtime-dashboard": "node scripts/serve-runtime-dashboard.mjs --check"
   },
   "engines": {
     "node": ">=22.0.0",

@@ -95,3 +95,10 @@ Append-only log of significant project decisions.
 - **Reason:** The next verification step should exercise `createRuntimeDashboardApp()` directly instead of repeating the older demo that manually wired the Phase 2 DOM binder.
 - **Implementation:** The preview imports `createRuntimeDashboardApp()`, accepts a Local API bearer token/base URL, and mounts only after explicit user action.
 - **Guardrail:** Preview code remains a thin browser harness: no polling, no bootstrap network calls, no direct CLI/filesystem/secret/Obsidian access, and all live side effects still go through Local API / HostConnector.
+
+## 2026-07-16 — Runtime Dashboard static entrypoint added
+
+- **Decision:** Add `apps/ui/runtime-dashboard.html` and `npm run serve:runtime-dashboard` as the first official static UI entrypoint for the Runtime Dashboard.
+- **Reason:** Londi needs a daily operator surface that is not only a `docs/previews` artifact, while keeping the PONYTAIL slice small and avoiding a new UI framework/build system.
+- **Implementation:** The entrypoint imports `createRuntimeDashboardApp()` and the serve script hosts repository static files from `127.0.0.1:3211`, with `--check` validation available through `npm run check:runtime-dashboard`.
+- **Guardrail:** The serve script does not proxy Local API, read secrets, or perform writes; the UI still has no polling/bootstrap network calls and all live side effects go through Local API / HostConnector.
