@@ -16,7 +16,7 @@
     body { margin:0; min-height:100vh; background: radial-gradient(circle at top right,#1f3b73 0,#0b1424 42%,#070b13 100%); }
     main { max-width:1180px; margin:0 auto; padding:40px 24px 64px; }
     .runtime-note, .runtime-controls { border:1px solid rgba(148,163,184,.28); background:rgba(15,23,42,.72); border-radius:20px; padding:16px 18px; margin-bottom:22px; color:#cbd5e1; }
-    .runtime-controls { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:end; direction:ltr; text-align:left; }
+    .runtime-controls { display:grid; grid-template-columns:1fr auto auto auto; gap:10px; align-items:end; direction:ltr; text-align:left; }
     .runtime-controls label { display:grid; gap:6px; color:#94a3b8; font-size:13px; }
     .runtime-controls input { width:100%; border:1px solid rgba(148,163,184,.28); border-radius:12px; padding:11px 12px; background:#0f172a; color:#e5eefc; }
     .runtime-status { min-height:20px; margin:0 0 18px; color:#93c5fd; direction:ltr; text-align:left; }
@@ -55,6 +55,7 @@
       <label>Base URL
         <input id="base-url" type="url" value="http://127.0.0.1:3210/api/v1" />
       </label>
+      <button id="use-local-dev-token" type="button">Use local dev token</button>
       <button id="mount" type="button">Mount Runtime Dashboard</button>
     </section>
     <p id="runtime-status" class="runtime-status">Waiting for token. Serve with: npm run serve:runtime-dashboard</p>
@@ -67,7 +68,22 @@
     const tokenInput = document.querySelector('#token');
     const baseUrlInput = document.querySelector('#base-url');
     const mountButton = document.querySelector('#mount');
+    const localDevTokenButton = document.querySelector('#use-local-dev-token');
+    const LOCAL_DEV_HOSTS = new Set(['127.0.0.1', 'localhost']);
+    const LOCAL_DEV_TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_';
+    const LOCAL_DEV_BASE_URL = 'http://127.0.0.1:3210/api/v1';
     let app = null;
+
+    localDevTokenButton.hidden = !LOCAL_DEV_HOSTS.has(window.location.hostname);
+    localDevTokenButton.addEventListener('click', () => {
+      if (!LOCAL_DEV_HOSTS.has(window.location.hostname)) {
+        status.textContent = 'Local dev token is only available on localhost.';
+        return;
+      }
+      tokenInput.value = LOCAL_DEV_TOKEN;
+      baseUrlInput.value = LOCAL_DEV_BASE_URL;
+      status.textContent = 'Local dev token loaded into the password field. Token remains hidden.';
+    });
 
     mountButton.addEventListener('click', () => {
       const token = tokenInput.value.trim();

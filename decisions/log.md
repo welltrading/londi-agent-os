@@ -116,3 +116,10 @@ Append-only log of significant project decisions.
 - **Reason:** Londi needs the live dashboard to move from `Obsidian unavailable` to real Run Summary writes without storing local machine paths or secrets in committed config.
 - **Implementation:** `createLocalApiConfigFromEnv()` starts from the default local config and injects the env-provided Obsidian root before service startup.
 - **Guardrail:** The variable carries a vault path only, not a bearer token or secret; UI still writes Obsidian only through Local API / HostConnector.
+
+## 2026-07-16 — Runtime Dashboard localhost dev token shortcut
+
+- **Decision:** Add a localhost-only `Use local dev token` button to the Runtime Dashboard entrypoint so local development can recover from browser paste failures without exposing the token in visible UI.
+- **Evidence:** User could not paste the local token reliably into the password field during live dashboard use.
+- **Implication:** On `127.0.0.1`/`localhost`, the button fills the password input and default Local API base URL; outside localhost it is hidden and guarded.
+- **Guardrail:** The token remains in the password field only, is not logged or displayed, and all runtime calls still flow through Local API / HostConnector after explicit user actions.

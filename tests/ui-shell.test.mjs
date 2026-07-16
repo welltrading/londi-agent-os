@@ -150,6 +150,10 @@ assert.match(runtimePreview, /No polling|אין polling/);
 const runtimeEntrypoint = readFileSync('apps/ui/runtime-dashboard.html', 'utf8');
 assert.match(runtimeEntrypoint, /createRuntimeDashboardApp/);
 assert.match(runtimeEntrypoint, /npm run serve:runtime-dashboard/);
+assert.match(runtimeEntrypoint, /Use local dev token/);
+assert.match(runtimeEntrypoint, /LOCAL_DEV_HOSTS = new Set\(\['127\.0\.0\.1', 'localhost'\]\)/);
+assert.match(runtimeEntrypoint, /localDevTokenButton.hidden = !LOCAL_DEV_HOSTS.has\(window.location.hostname\)/);
+assert.match(runtimeEntrypoint, /Token remains hidden/);
 assert.doesNotMatch(runtimeEntrypoint, /createPhase2DashboardDomBinder/);
 
 const runtimeServeScript = readFileSync('scripts/serve-runtime.mjs', 'utf8');
