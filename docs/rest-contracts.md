@@ -23,6 +23,9 @@ The following endpoints are routed by the Local API service in the Phase 2 slice
 | GET | `/api/v1/agents` | Optional `refresh=true`; returns status/usage agent cards. |
 | GET | `/api/v1/skills` | Static Phase 2 Skill Registry. |
 | GET | `/api/v1/projects` | Paginated ProjectWorkspace list. |
+| GET | `/api/v1/projects/{projectId}/browser` | Paginated read-only Project Browser snapshot for an explicitly registered project path. Supports optional `path` query constrained inside the project root. |
+| GET | `/api/v1/runs` | Paginated manual/minimal run list from HostConnector storage. |
+| POST | `/api/v1/runs` | Requires `Idempotency-Key`; creates a manual `Ask Agent Zero / General task` run in `data/runs/runs.json`. |
 | PUT | `/api/v1/projects/{projectId}` | Requires `Idempotency-Key`; upserts project context. |
 | GET | `/api/v1/obsidian/status` | Optional `refresh=true`; returns HostConnector vault availability. |
 | POST | `/api/v1/runs/obsidian-summary` | Requires `Idempotency-Key`; writes a Run Summary through HostConnector. |

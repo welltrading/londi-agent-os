@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve, relative } from 'node:path';
 import { createLocalApiSecurity, writeJson } from './auth.js';
 import { createLogger, createRequestId } from './logging.js';
 import { API_BASE_PATH, IDEMPOTENCY_KEY_HEADER, createResourceResponse } from './rest-contracts.js';
@@ -24,8 +24,14 @@ export function createServiceLifecycle(options = {}) {
     vaultPath: config.obsidian?.roots?.[0] ?? null,
     mkdir: mkdirSync,
     writeFile: writeFileSync,
+    readFile: readFileSync,
     exists: existsSync,
-    joinPath: join
+    joinPath: join,
+    resolvePath: resolve,
+    relativePath: relative,
+    readDir: readdirSync,
+    stat: statSync,
+    runsFilePath: config.paths.runs ? join(config.paths.runs, 'runs.json') : 'data/runs/runs.json'
   });
 
   let server;
@@ -52,14 +58,14 @@ export function createServiceLifecycle(options = {}) {
       await routeRequest(request, response);
     });
 
-    await new Promise((resolve, reject) => {
+    await new Promise((resolvePromise, reject) => {
       server.once('error', reject);
       server.listen(state.port, state.host, () => {
         server.off('error', reject);
         state.status = 'running';
         state.startedAt = new Date().toISOString();
         logger.info('service.started', { service: SERVICE_NAME, host: state.host, port: state.port });
-        resolve();
+        resolvePromise();
       });
     });
 
@@ -72,8 +78,8 @@ export function createServiceLifecycle(options = {}) {
     state.shutdownReason = reason;
     logger.info('service.stopping', { service: SERVICE_NAME, reason });
 
-    await new Promise((resolve, reject) => {
-      server.close((error) => (error ? reject(error) : resolve()));
+    await new Promise((resolvePromise, reject) => {
+      server.close((error) => (error ? reject(error) : resolvePromise()));
     });
 
     server = undefined;
@@ -102,9 +108,27 @@ export function createServiceLifecycle(options = {}) {
         writeResource(response, { requestId, data, resourceVersion: 'phase2-skills-v1' });
         return;
       }
+      if (request.method === 'GET' && pathname === `${API_BASE_PATH}/runs`) {
+        const data = hostConnector.listRuns();
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('runs', data), page: { limit: 50, total: data.length } });
+        return;
+      }
+      if (request.method === 'POST' && pathname === `${API_BASE_PATH}/runs`) {
+        requireIdempotency(request);
+        const body = await readJsonBody(request);
+        const data = hostConnector.createManualRun(body);
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('run', data), statusCode: 201 });
+        return;
+      }
       if (request.method === 'GET' && pathname === `${API_BASE_PATH}/projects`) {
         const data = hostConnector.listProjects();
         writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('projects', data), page: { limit: 50, total: data.length } });
+        return;
+      }
+      const projectBrowserMatch = pathname.match(new RegExp(`^${API_BASE_PATH}/projects/([^/]+)/browser$`));
+      if (request.method === 'GET' && projectBrowserMatch) {
+        const data = hostConnector.getProjectBrowser({ projectId: decodeURIComponent(projectBrowserMatch[1]), relativePath: parsedUrl.searchParams.get('path') ?? '.' });
+        writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('project-browser', data), page: { limit: 100, total: data.entries.length } });
         return;
       }
       const projectMatch = pathname.match(new RegExp(`^${API_BASE_PATH}/projects/([^/]+)$`));

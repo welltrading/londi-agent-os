@@ -57,6 +57,7 @@ export const REST_ENDPOINTS = Object.freeze([
   endpoint('GET', '/agents'),
   endpoint('GET', '/skills'),
   endpoint('GET', '/projects', { paginated: true }),
+  endpoint('GET', '/projects/{projectId}/browser', { paginated: true }),
   endpoint('PUT', '/projects/{projectId}', { command: true, idempotent: true }),
   endpoint('GET', '/obsidian/status'),
   endpoint('POST', '/runs/obsidian-summary', { command: true, idempotent: true }),
@@ -198,7 +199,7 @@ function redactSensitiveKeys(value) {
 
 function sanitizeApiString(value) {
   return String(value)
-    .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]')
+    .replace(/(^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{8,}/g, '$1[REDACTED]')
     .replace(/ghp_[A-Za-z0-9]{20,}/g, '[REDACTED]')
     .replace(/xox[baprs]-[A-Za-z0-9-]{20,}/g, '[REDACTED]')
     .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')

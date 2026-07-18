@@ -14,6 +14,7 @@ import {
   createPhase2DashboardViewModel,
   createPhase2DashboardInteractionModel,
   loadPhase2DashboardFromApi,
+  createPhase2ManualRun,
   writePhase2ObsidianRunSummary,
   assertProjectHasAllAgents,
   Phase2DashboardError
@@ -22,7 +23,8 @@ import {
 const dashboard = createPhase2DashboardModel({
   generatedAt: '2026-07-14T18:00:00.000Z',
   projects: [{ id: 'Client Project', name: 'Client Project', rootPath: 'C:/Projects/client' }],
-  runs: [{ id: 'run-1', title: 'Run summary', projectId: 'client-project', status: 'succeeded', summary: 'ok' }]
+  runs: [{ id: 'run-1', title: 'Run summary', projectId: 'client-project', status: 'succeeded', summary: 'ok' }],
+  projectBrowser: { projectId: 'client-project', entries: [{ name: 'src', path: 'src', type: 'directory', selectableAsContext: false }, { name: 'README.md', path: 'README.md', type: 'file', size: 12 }] }
 });
 assert.equal(dashboard.counts.agents, 4);
 assert.equal(dashboard.counts.activeProjects, 1);
@@ -41,6 +43,7 @@ assert.equal(viewModel.obsidianLabel, 'Obsidian unavailable');
 assert.equal(viewModel.agents.find((agent) => agent.id === 'agent-zero').tone, 'green');
 assert.equal(viewModel.agents.find((agent) => agent.id === 'hermes').tone, 'amber');
 assert.equal(viewModel.projects[0].agents, 4);
+assert.equal(viewModel.projectBrowser.entries.some((entry) => entry.name === 'README.md'), true);
 assert.equal(viewModel.skills.find((skill) => skill.id === 'obsidian-run-summary').agents, 1);
 assert.equal(viewModel.runs[0].tone, 'green');
 assert.equal(Object.isFrozen(viewModel.agents[0]), true);
@@ -65,6 +68,7 @@ assert.equal(errorInteraction.runtime.error, 'network down');
 const screenModel = createPhase2DashboardScreenModel(idleInteraction);
 assert.equal(screenModel.screenId, 'phase2-dashboard');
 assert.equal(screenModel.sections.find((section) => section.id === 'agents').items.length, 4);
+assert.equal(screenModel.sections.find((section) => section.id === 'project-browser').items.length, 2);
 assert.equal(screenModel.buttons.find((button) => button.id === 'load').dispatch, 'load');
 assert.equal(screenModel.renderPolicy.dispatchOnly, true);
 assert.equal(screenModel.renderPolicy.noPolling, true);
@@ -187,8 +191,8 @@ assert.equal(binder.binderId, 'phase2-dashboard-dom-binder');
 assert.equal(binder.isMounted(), false);
 const mounted = binder.mount();
 assert.equal(binder.isMounted(), true);
-assert.equal(mounted.bindingCount, 3);
-assert.equal(mounted.activeBindingCount, 3);
+assert.equal(mounted.bindingCount, 4);
+assert.equal(mounted.activeBindingCount, 4);
 assert.equal(mounted.renderPolicy.controlledDomMutation, true);
 assert.equal(mounted.renderPolicy.noPolling, true);
 assert.equal(rootNode.innerHTML.includes('data-shell-id="phase2-dashboard-shell"'), true);
@@ -206,6 +210,7 @@ assert.throws(() => createPhase2DashboardDomBinder({ screen: domScreen, document
 const refreshRequests = createPhase2DashboardApiRequests({ refresh: true, projectId: 'Client AI OS' });
 assert.equal(refreshRequests.find((request) => request.id === 'load-agents').path, '/agents?refresh=true');
 assert.equal(refreshRequests.find((request) => request.id === 'upsert-project').path, '/projects/Client%20AI%20OS');
+assert.equal(refreshRequests.find((request) => request.id === 'load-project-browser').path, '/projects/Client%20AI%20OS/browser');
 assert.equal(refreshRequests.find((request) => request.id === 'write-obsidian-run-summary').idempotent, true);
 
 const tokenProvider = createMemoryTokenProvider('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_');
@@ -218,19 +223,36 @@ const fetchImpl = async (url, options) => {
     '/agents': { data: dashboard.agents, resourceVersion: 'agents-v1' },
     '/skills': { data: dashboard.skills, resourceVersion: 'skills-v1' },
     '/projects': { data: dashboard.projects, resourceVersion: 'projects-v1' },
+    '/projects/client-project/browser': { data: dashboard.projectBrowser, resourceVersion: 'project-browser-v1' },
+    '/runs': { data: dashboard.runs, resourceVersion: 'runs-v1' },
     '/obsidian/status': { data: { available: true, targetFolder: 'Londi Agent OS/Runs/', cached: true }, resourceVersion: 'obsidian-v1' },
-    '/runs/obsidian-summary': { data: { id: 'run-2', title: 'API summary', projectId: 'client-project', status: 'succeeded', summary: 'written', artifactPath: '/vault/run-2.md' }, resourceVersion: 'run-v1' }
+    '/runs/obsidian-summary': { data: { id: 'run-2', title: 'API summary', projectId: 'client-project', status: 'succeeded', summary: 'written', artifactPath: '/vault/run-2.md' }, resourceVersion: 'run-v1' },
+    '/runs:POST': { data: { id: 'run-3', title: 'Manual API run', status: 'succeeded', summary: 'manual summary', createdAt: '2026-07-14T18:06:00.000Z' }, resourceVersion: 'run-manual-v1' }
   };
-  return { status: path === '/runs/obsidian-summary' ? 201 : 200, json: async () => payloads[path] };
+  const key = options.method === 'POST' && path === '/runs' ? '/runs:POST' : path;
+  return { status: path === '/runs/obsidian-summary' || key === '/runs:POST' ? 201 : 200, json: async () => payloads[key] };
 };
 
 const liveDashboard = await loadPhase2DashboardFromApi({ apiClient, fetchImpl, generatedAt: '2026-07-14T18:05:00.000Z', refresh: true });
 assert.equal(liveDashboard.generatedAt, '2026-07-14T18:05:00.000Z');
 assert.equal(liveDashboard.agents.length, 4);
 assert.equal(liveDashboard.projects[0].id, 'client-project');
+assert.equal(liveDashboard.projectBrowser.entries[1].name, 'README.md');
 assert.equal(liveDashboard.obsidian.available, true);
 assert.equal(calls.some((call) => call.url === 'http://127.0.0.1:3210/api/v1/agents?refresh=true'), true);
 assert.equal(calls.every((call) => call.options.headers.authorization === 'Bearer abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_'), true);
+
+
+const manualRun = await createPhase2ManualRun({
+  apiClient,
+  fetchImpl,
+  idempotencyKey: 'idem-manual',
+  input: { title: 'Manual API run', prompt: 'Do something', summary: 'manual summary' }
+});
+assert.equal(manualRun.status, 'succeeded');
+assert.equal(manualRun.createdAt, '2026-07-14T18:06:00.000Z');
+assert.equal(calls.at(-1).options.headers['idempotency-key'], 'idem-manual');
+await assert.rejects(() => createPhase2ManualRun({ apiClient, fetchImpl, input: { title: 'x' } }), Phase2DashboardError);
 
 const writtenRun = await writePhase2ObsidianRunSummary({
   apiClient,
@@ -262,7 +284,7 @@ const runtimeWrite = await runtime.writeRunSummary({
 });
 assert.equal(runtimeWrite.run.id, 'run-2');
 assert.equal(runtimeWrite.dashboard.runs.find((run) => run.id === 'run-2').tone, 'green');
-assert.equal(runtimeWrite.dashboard.metrics.find((item) => item.id === 'runs').value, 1);
+assert.equal(runtimeWrite.dashboard.metrics.find((item) => item.id === 'runs').value, 2);
 assert.equal(calls.at(-1).options.headers['x-request-id'], 'phase2-runtime-test-run-summary');
 
 console.log('Phase 2 dashboard tests OK');

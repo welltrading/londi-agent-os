@@ -1,6 +1,8 @@
 import {
   OBSIDIAN_RUN_SUMMARY_TARGET_FOLDER,
+  createManualRunRecord,
   createMinimalRun,
+  createProjectBrowserSnapshot,
   createObsidianRunSummaryFilename,
   createProjectWorkspace,
   listPhase2AgentCards,
@@ -29,14 +31,26 @@ export function createInMemoryHostConnector({
   writeFile = null,
   mkdir = null,
   joinPath = (...parts) => parts.join('/'),
+  resolvePath = (...parts) => joinPath(...parts),
+  relativePath = (from, to) => String(to).startsWith(String(from)) ? String(to).slice(String(from).length).replace(/^[\\/]+/, '') || '.' : String(to),
   exists = () => Boolean(vaultPath),
-  projects = []
+  stat = null,
+  readDir = null,
+  projects = [],
+  runs = [],
+  runsFilePath = 'data/runs/runs.json',
+  readFile = null
 } = {}) {
   const cache = new Map();
   const projectStore = new Map(projects.map((project) => {
     const normalized = createProjectWorkspace(project);
     return [normalized.id, normalized];
   }));
+  const runStore = new Map(runs.map((run) => {
+    const normalized = normalizeStoredRun(run);
+    return [normalized.id, normalized];
+  }));
+  hydrateRunsFromDisk();
 
   return Object.freeze({
     getAgentsStatus(options = {}) {
@@ -64,6 +78,36 @@ export function createInMemoryHostConnector({
       return Object.freeze([...projectStore.values()]);
     },
 
+    getProjectBrowser({ projectId, relativePath: requestedPath = '.', maxEntries = 100 } = {}) {
+      if (!projectId) throw new HostConnectorError('Project browser requires projectId.');
+      const project = projectStore.get(String(projectId).toLowerCase()) ?? projectStore.get(projectId);
+      if (!project) throw new HostConnectorError('Project was not found for browsing.', { projectId });
+      if (!project.rootPath) throw new HostConnectorError('Project root path is required for browsing.', { projectId: project.id });
+      if (typeof readDir !== 'function' || typeof stat !== 'function') throw new HostConnectorError('HostConnector project browser dependencies are not configured.');
+      const safeRelativePath = normalizeBrowserRelativePath(requestedPath);
+      const root = resolvePath(project.rootPath);
+      const target = safeRelativePath === '.' ? root : resolvePath(root, safeRelativePath);
+      if (!isPathInside(root, target)) throw new HostConnectorError('Project browser path must stay inside the project root.', { projectId: project.id, relativePath: requestedPath });
+      if (typeof exists === 'function' && !exists(target)) throw new HostConnectorError('Project browser path does not exist.', { projectId: project.id, relativePath: safeRelativePath });
+      const entries = readDir(target, { withFileTypes: true })
+        .filter((entry) => !isHiddenOrIgnoredProjectEntry(entry.name))
+        .sort((a, b) => Number(b.isDirectory?.() ?? false) - Number(a.isDirectory?.() ?? false) || a.name.localeCompare(b.name))
+        .slice(0, maxEntries)
+        .map((entry) => {
+          const absolute = resolvePath(target, entry.name);
+          const info = stat(absolute);
+          const type = entry.isDirectory?.() ? 'directory' : 'file';
+          return {
+            name: entry.name,
+            path: normalizeBrowserRelativePath(relativePath(root, absolute)),
+            type,
+            size: type === 'file' ? info.size : null,
+            selectableAsContext: type === 'file'
+          };
+        });
+      return createProjectBrowserSnapshot({ projectId: project.id, rootPath: project.rootPath, relativePath: safeRelativePath, entries, loadedAt: now() });
+    },
+
     upsertProject(project) {
       const normalized = createProjectWorkspace({ ...project, updatedAt: now(), createdAt: project.createdAt ?? now() });
       projectStore.set(normalized.id, normalized);
@@ -85,8 +129,48 @@ export function createInMemoryHostConnector({
       const run = createMinimalRun({ id, title, projectId, status: 'running', lastUpdated: now() });
       const written = this.writeRunSummary({ runId: run.id, title: run.title, projectId, summary, artifacts, decisionOrAcceptance, timestamp: now() });
       return createMinimalRun({ ...run, status: 'succeeded', summary, artifactPath: written.artifactPath, lastUpdated: written.lastUpdated });
+    },
+
+    listRuns() {
+      return Object.freeze([...runStore.values()].sort((a, b) => String(b.createdAt ?? b.lastUpdated ?? '').localeCompare(String(a.createdAt ?? a.lastUpdated ?? ''))));
+    },
+
+    createManualRun(input = {}) {
+      const createdAt = now();
+      const id = input.id ?? createManualRunId(input.title, createdAt);
+      const run = createManualRunRecord({ ...input, id, createdAt });
+      runStore.set(run.id, run);
+      persistRunsToDisk();
+      return run;
     }
   });
+
+  function hydrateRunsFromDisk() {
+    if (typeof readFile !== 'function') return;
+    try {
+      if (typeof exists === 'function' && !exists(runsFilePath)) return;
+      const parsed = JSON.parse(readFile(runsFilePath, 'utf8'));
+      const items = Array.isArray(parsed) ? parsed : parsed.runs;
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        const normalized = normalizeStoredRun(item);
+        runStore.set(normalized.id, normalized);
+      }
+    } catch (error) {
+      throw new HostConnectorError('Manual runs storage could not be read.', { path: runsFilePath, message: error.message });
+    }
+  }
+
+  function persistRunsToDisk() {
+    if (typeof writeFile !== 'function' || typeof mkdir !== 'function') return;
+    const directory = String(runsFilePath).split(/[\\/]/).slice(0, -1).join('/') || '.';
+    mkdir(directory, { recursive: true });
+    writeFile(runsFilePath, `${JSON.stringify({ runs: [...runStore.values()] }, null, 2)}\n`, 'utf8');
+  }
+
+  function normalizeStoredRun(run) {
+    return run?.type === 'manual' ? createManualRunRecord(run) : createMinimalRun(run);
+  }
 
   function readCached(key, ttlMs, options, producer) {
     const forceAllowed = options.force === true && manualRefreshAllowed(key);
@@ -111,4 +195,27 @@ export function createInMemoryHostConnector({
 function markCached(value) {
   if (Array.isArray(value)) return Object.freeze(value.map((item) => ({ ...item, usage: { ...item.usage, cached: true }, cached: true })));
   return Object.freeze({ ...value, cached: true });
+}
+
+function createManualRunId(title, createdAt) {
+  const stamp = String(createdAt).replace(/[^0-9]/g, '').slice(0, 14);
+  const slug = String(title ?? 'manual-run').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 36) || 'manual-run';
+  return `run-${stamp}-${slug}`;
+}
+
+
+function normalizeBrowserRelativePath(value = '.') {
+  const normalized = String(value || '.').replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/g, '') || '.';
+  if (normalized.split('/').includes('..')) throw new HostConnectorError('Project browser path must stay inside the project root.', { relativePath: value });
+  return normalized;
+}
+
+function isPathInside(root, target) {
+  const rootText = String(root).replaceAll('\\', '/').replace(/\/+$/g, '');
+  const targetText = String(target).replaceAll('\\', '/');
+  return targetText === rootText || targetText.startsWith(rootText + '/');
+}
+
+function isHiddenOrIgnoredProjectEntry(name) {
+  return name.startsWith('.') || ['node_modules', '__pycache__', 'dist', 'build', '.next'].includes(name);
 }

@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createInMemoryHostConnector, HOST_CONNECTOR_CACHE_TTL_MS, HostConnectorError, createServiceLifecycle, createCredentialManagerTokenProvider } from '../apps/local-api/src/index.js';
 
@@ -15,7 +15,13 @@ try {
     exists: existsSync,
     mkdir: mkdirSync,
     writeFile: writeFileSync,
-    joinPath: join
+    joinPath: join,
+    runsFilePath: join(temp, 'runs', 'runs.json'),
+    readFile: readFileSync,
+    readDir: readdirSync,
+    stat: statSync,
+    resolvePath: resolve,
+    relativePath: relative
   });
 
   assert.equal(HOST_CONNECTOR_CACHE_TTL_MS.agentAvailability, 30_000);
@@ -33,9 +39,20 @@ try {
   tick += 61_000;
   assert.equal(connector.getObsidianStatus({ force: true }).available, true);
 
-  const project = connector.upsertProject({ id: 'Client AI OS', name: 'Client AI OS', rootPath: 'C:/Projects/client-ai-os' });
+  const projectRoot = join(temp, 'client-ai-os');
+  mkdirSync(join(projectRoot, 'src'), { recursive: true });
+  writeFileSync(join(projectRoot, 'README.md'), '# Client AI OS\n', 'utf8');
+  writeFileSync(join(projectRoot, '.env'), 'SECRET=hidden\n', 'utf8');
+  const project = connector.upsertProject({ id: 'Client AI OS', name: 'Client AI OS', rootPath: projectRoot });
   assert.equal(project.id, 'client-ai-os');
   assert.equal(connector.listProjects()[0].agentIds.includes('claude-code'), true);
+  const browser = connector.getProjectBrowser({ projectId: project.id });
+  assert.equal(browser.projectId, 'client-ai-os');
+  assert.equal(browser.relativePath, '.');
+  assert.equal(browser.entries.some((entry) => entry.name === 'src' && entry.type === 'directory'), true);
+  assert.equal(browser.entries.some((entry) => entry.name === 'README.md' && entry.selectableAsContext === true), true);
+  assert.equal(browser.entries.some((entry) => entry.name === '.env'), false);
+  assert.throws(() => connector.getProjectBrowser({ projectId: project.id, relativePath: '../' }), HostConnectorError);
 
   const run = connector.runObsidianSummary({ id: 'run-200', title: 'Project summary', projectId: project.id, summary: 'Project run summary was created.', artifacts: ['artifact.md'] });
   assert.equal(run.status, 'succeeded');
@@ -43,6 +60,24 @@ try {
   const note = readFileSync(run.artifactPath, 'utf8');
   assert.equal(note.includes('- Project ID: client-ai-os'), true);
   assert.equal(note.includes('Project run summary was created.'), true);
+
+  const manualRun = connector.createManualRun({ title: 'Manual run', prompt: 'Ask Agent Zero to summarize this.', summary: 'Manual summary.' });
+  assert.equal(manualRun.type, 'manual');
+  assert.equal(manualRun.action, 'ask-agent-zero-general-task');
+  assert.equal(manualRun.status, 'succeeded');
+  assert.equal(connector.listRuns()[0].id, manualRun.id);
+  const persistedRuns = JSON.parse(readFileSync(join(temp, 'runs', 'runs.json'), 'utf8')).runs;
+  assert.equal(persistedRuns[0].prompt, 'Ask Agent Zero to summarize this.');
+  const hydratedConnector = createInMemoryHostConnector({
+    runsFilePath: join(temp, 'runs', 'runs.json'),
+    exists: existsSync,
+    readFile: readFileSync,
+    readDir: readdirSync,
+    stat: statSync,
+    resolvePath: resolve,
+    relativePath: relative
+  });
+  assert.equal(hydratedConnector.listRuns()[0].summary, 'Manual summary.');
 
   const broken = createInMemoryHostConnector({ vaultPath: join(temp, 'vault') });
   assert.throws(() => broken.writeRunSummary({ runId: 'run-1', title: 'x', summary: 'x' }), HostConnectorError);
@@ -54,7 +89,13 @@ try {
     exists: existsSync,
     mkdir: mkdirSync,
     writeFile: writeFileSync,
-    joinPath: join
+    joinPath: join,
+    runsFilePath: join(temp, 'api-runs', 'runs.json'),
+    readFile: readFileSync,
+    readDir: readdirSync,
+    stat: statSync,
+    resolvePath: resolve,
+    relativePath: relative
   });
   const service = createServiceLifecycle({
     config: {
@@ -73,9 +114,31 @@ try {
   const agents = await fetch('http://127.0.0.1:3213/api/v1/agents?refresh=true', { headers });
   assert.equal(agents.status, 200);
   assert.equal((await agents.json()).data.length, 4);
-  const putProject = await fetch('http://127.0.0.1:3213/api/v1/projects/live-project', { method: 'PUT', headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'idem-project' }, body: JSON.stringify({ name: 'Live Project', rootPath: 'C:/Projects/live' }) });
+  const liveRoot = join(temp, 'live');
+  mkdirSync(join(liveRoot, 'docs'), { recursive: true });
+  writeFileSync(join(liveRoot, 'README.md'), '# Live\n', 'utf8');
+  const putProject = await fetch('http://127.0.0.1:3213/api/v1/projects/live-project', { method: 'PUT', headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'idem-project' }, body: JSON.stringify({ name: 'Live Project', rootPath: liveRoot }) });
   assert.equal(putProject.status, 200);
   assert.equal((await putProject.json()).data.doxPath, 'AGENTS.md');
+  const projectBrowserResponse = await fetch('http://127.0.0.1:3213/api/v1/projects/live-project/browser', { headers });
+  assert.equal(projectBrowserResponse.status, 200);
+  const projectBrowserPayload = await projectBrowserResponse.json();
+  assert.equal(projectBrowserPayload.data.entries.some((entry) => entry.name === 'README.md'), true);
+  const listRunsEmpty = await fetch('http://127.0.0.1:3213/api/v1/runs', { headers });
+  assert.equal(listRunsEmpty.status, 200);
+  assert.equal((await listRunsEmpty.json()).data.length, 0);
+  const manualRunResponse = await fetch('http://127.0.0.1:3213/api/v1/runs', { method: 'POST', headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'idem-manual-run' }, body: JSON.stringify({ title: 'Live manual run', prompt: 'Capture this manually.', summary: 'Captured.' }) });
+  assert.equal(manualRunResponse.status, 201);
+  const manualRunPayload = await manualRunResponse.json();
+  assert.equal(manualRunPayload.data.type, 'manual');
+  assert.equal(manualRunPayload.data.action, 'ask-agent-zero-general-task');
+  assert.equal(existsSync(join(temp, 'api-runs', 'runs.json')), true);
+  const listRunsFilled = await fetch('http://127.0.0.1:3213/api/v1/runs', { headers });
+  assert.equal((await listRunsFilled.json()).data[0].title, 'Live manual run');
+  const missingManualIdem = await fetch('http://127.0.0.1:3213/api/v1/runs', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ title: 'x', prompt: 'x', summary: 'x' }) });
+  assert.equal(missingManualIdem.status, 400);
+  const invalidManual = await fetch('http://127.0.0.1:3213/api/v1/runs', { method: 'POST', headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'idem-invalid-manual' }, body: JSON.stringify({ title: 'x', summary: 'missing prompt' }) });
+  assert.equal(invalidManual.status, 400);
   const runSummary = await fetch('http://127.0.0.1:3213/api/v1/runs/obsidian-summary', { method: 'POST', headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'idem-summary' }, body: JSON.stringify({ id: 'run-300', title: 'Live summary', projectId: 'live-project', summary: 'Live API summary.' }) });
   assert.equal(runSummary.status, 201);
   assert.equal(existsSync((await runSummary.json()).data.artifactPath), true);

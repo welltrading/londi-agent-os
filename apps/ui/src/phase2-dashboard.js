@@ -1,4 +1,4 @@
-import { listPhase2AgentCards, listPhase2Skills, createProjectWorkspace, createMinimalRun } from '@londi-agent-os/contracts';
+import { listPhase2AgentCards, listPhase2Skills, createProjectWorkspace, createMinimalRun, createProjectBrowserSnapshot } from '@londi-agent-os/contracts';
 
 export class Phase2DashboardError extends Error {
   constructor(message, details = {}) {
@@ -9,7 +9,7 @@ export class Phase2DashboardError extends Error {
   }
 }
 
-export function createPhase2DashboardModel({ agents = listPhase2AgentCards(), skills = listPhase2Skills(), projects = [], runs = [], obsidian = null, generatedAt = new Date().toISOString(), lastUpdated = null, cached = false, errors = [] } = {}) {
+export function createPhase2DashboardModel({ agents = listPhase2AgentCards(), skills = listPhase2Skills(), projects = [], runs = [], obsidian = null, projectBrowser = null, generatedAt = new Date().toISOString(), lastUpdated = null, cached = false, errors = [] } = {}) {
   const normalizedProjects = projects.map(createProjectWorkspace);
   const normalizedRuns = runs.map(createMinimalRun);
   return deepFreeze({
@@ -21,6 +21,7 @@ export function createPhase2DashboardModel({ agents = listPhase2AgentCards(), sk
     projects: normalizedProjects,
     runs: normalizedRuns,
     obsidian,
+    projectBrowser: projectBrowser ? createProjectBrowserSnapshot(projectBrowser) : null,
     errors: errors.map((item) => String(item)),
     counts: {
       agents: agents.length,
@@ -63,8 +64,14 @@ export function createPhase2DashboardViewModel(model = createPhase2DashboardMode
       tone: toneForAgentStatus(agent.status)
     })),
     projects: dashboard.projects.map((project) => ({ id: project.id, name: project.name, status: project.status, rootPath: project.rootPath, agents: project.agentIds.length, skills: project.skillIds.length })),
+    projectBrowser: dashboard.projectBrowser ? {
+      projectId: dashboard.projectBrowser.projectId,
+      relativePath: dashboard.projectBrowser.relativePath,
+      entries: dashboard.projectBrowser.entries.map((entry) => ({ name: entry.name, path: entry.path, type: entry.type, size: entry.size, selectableAsContext: entry.selectableAsContext })),
+      error: dashboard.projectBrowser.error
+    } : null,
     skills: dashboard.skills.map((skill) => ({ id: skill.id, displayName: skill.displayName, active: skill.active, agents: skill.agentIds.length })),
-    runs: dashboard.runs.map((run) => ({ id: run.id, title: run.title, status: run.status, agentId: run.agentId, skillId: run.skillId, summary: run.summary, artifactPath: run.artifactPath, lastUpdated: run.lastUpdated, tone: toneForRunStatus(run.status) })),
+    runs: dashboard.runs.map((run) => ({ id: run.id, title: run.title, status: run.status, agentId: run.agentId, skillId: run.skillId, summary: run.summary, artifactPath: run.artifactPath, lastUpdated: run.lastUpdated, createdAt: run.createdAt ?? run.lastUpdated, tone: toneForRunStatus(run.status) })),
     actions: dashboard.actions,
     errors: dashboard.errors
   });
@@ -75,7 +82,8 @@ export function createPhase2DashboardInteractionModel(viewModel = createPhase2Da
   const actionLabel = {
     load: 'Loading dashboard snapshot',
     refresh: 'Refreshing status / usage',
-    'write-run-summary': 'Writing Run Summary to Obsidian'
+    'write-run-summary': 'Writing Run Summary to Obsidian',
+    'create-manual-run': 'Creating manual run'
   }[loadingAction] ?? (lastAction ? `Last action: ${lastAction}` : 'Ready');
   return deepFreeze({
     ...viewModel,
@@ -90,14 +98,15 @@ export function createPhase2DashboardInteractionModel(viewModel = createPhase2Da
     controls: [
       control('load', 'Load', loading, loadingAction === 'load', 'Load agent status, skills, projects, and Obsidian status.'),
       control('refresh', 'Refresh', loading, loadingAction === 'refresh', 'Manual refresh for agent/usage and Obsidian cache.'),
-      control('write-run-summary', 'Write Run Summary', loading || viewModel.obsidianTone !== 'green', loadingAction === 'write-run-summary', 'Write the selected minimal run summary through Local API.')
+      control('write-run-summary', 'Write Run Summary', loading || viewModel.obsidianTone !== 'green', loadingAction === 'write-run-summary', 'Write the selected minimal run summary through Local API.'),
+      control('create-manual-run', 'Create Manual Run', loading, loadingAction === 'create-manual-run', 'Create a manual Ask Agent Zero / General task run through Local API.', { placement: 'new-run-form' })
     ]
   });
 }
 
 export function createPhase2DashboardScreenModel(interaction = createPhase2DashboardInteractionModel()) {
   const model = interaction?.runtime && Array.isArray(interaction?.controls) ? interaction : createPhase2DashboardInteractionModel(interaction);
-  const buttons = model.controls.map((item) => ({ id: item.id, label: item.label, disabled: item.disabled, loading: item.loading, description: item.description, dispatch: item.id }));
+  const buttons = model.controls.map((item) => ({ id: item.id, label: item.label, disabled: item.disabled, loading: item.loading, description: item.description, dispatch: item.id, placement: item.placement ?? 'toolbar' }));
   const controlsById = Object.fromEntries(buttons.map((item) => [item.id, item]));
   return deepFreeze({
     screenId: 'phase2-dashboard',
@@ -117,6 +126,8 @@ export function createPhase2DashboardScreenModel(interaction = createPhase2Dashb
       section('metrics', 'Runtime Slice', model.metrics),
       section('agents', 'Agent Management', model.agents),
       section('projects', 'Project Workspace', model.projects),
+      section('project-browser', 'Project Browser', model.projectBrowser?.entries ?? []),
+      section('new-run', 'New Run', [{ label: 'Ask Agent Zero / General task', action: 'create-manual-run' }]),
       section('runs', 'Runs', model.runs),
       section('obsidian', 'Obsidian', [{ label: model.obsidianLabel, tone: model.obsidianTone }]),
       section('skills', 'Skill Registry', model.skills)
@@ -184,7 +195,7 @@ export function createPhase2DashboardShellModel(screen = createPhase2DashboardSc
     metricCards: metrics.map((item) => ({ id: item.id, label: item.label, value: item.value, tone: item.tone })),
     toolbar: {
       ariaLive: model.ariaLive,
-      buttons: model.buttons.map((button) => ({
+      buttons: model.buttons.filter((button) => button.placement !== 'new-run-form').map((button) => ({
         id: button.id,
         label: button.label,
         disabled: button.disabled,
@@ -218,13 +229,16 @@ export function createPhase2DashboardVisualAdapter(shell = createPhase2Dashboard
     adapterId: 'phase2-dashboard-visual-adapter',
     target,
     html,
-    bindings: model.toolbar.buttons.map((button) => ({
-      selector: `[data-control-id="${escapeHtml(button.id)}"]`,
-      controlId: button.onClick.controlId,
-      event: 'click',
-      handler: button.onClick,
-      disabled: button.disabled
-    })),
+    bindings: [
+      ...model.toolbar.buttons.map((button) => ({
+        selector: `[data-control-id="${escapeHtml(button.id)}"]`,
+        controlId: button.onClick.controlId,
+        event: 'click',
+        handler: button.onClick,
+        disabled: button.disabled
+      })),
+      { selector: '[data-control-id="create-manual-run"]', controlId: 'create-manual-run', event: 'click', handler: { type: 'dispatch-control', controlId: 'create-manual-run' }, disabled: false }
+    ],
     ariaLive: model.toolbar.ariaLive,
     renderPolicy: {
       ...model.renderPolicy,
@@ -269,7 +283,7 @@ export function createPhase2DashboardDomBinder({ screen, documentRef = globalThi
       if (!node || typeof node.addEventListener !== 'function') continue;
       const listener = async (event) => {
         event?.preventDefault?.();
-        await screen.click(binding.controlId, createDispatchOptions(binding.controlId, binding));
+        await screen.click(binding.controlId, createBinderDispatchOptions(binding.controlId, binding));
         renderIntoTarget();
       };
       node.addEventListener(binding.event, listener);
@@ -296,6 +310,18 @@ export function createPhase2DashboardDomBinder({ screen, documentRef = globalThi
       }
     });
   };
+
+  const createBinderDispatchOptions = (controlId, binding) => {
+    const options = createDispatchOptions(controlId, binding) ?? {};
+    if (controlId !== 'create-manual-run') return options;
+    return { ...options, input: readManualRunFormInput() };
+  };
+  const readManualRunFormInput = () => ({
+    title: readFormValue('manual-run-title'),
+    prompt: readFormValue('manual-run-prompt'),
+    summary: readFormValue('manual-run-summary')
+  });
+  const readFormValue = (field) => mountedTarget?.querySelector?.(`[data-field="${field}"]`)?.value ?? '';
 
   return Object.freeze({
     binderId: 'phase2-dashboard-dom-binder',
@@ -356,10 +382,19 @@ export function createPhase2DashboardController({ runtime, createIdempotencyKey 
       const key = idempotencyKey ?? createIdempotencyKey(input);
       return runAction('write-run-summary', () => runtime.writeRunSummary({ input, idempotencyKey: key }));
     },
+    createManualRun({ input, idempotencyKey } = {}) {
+      return runAction('create-manual-run', () => {
+        const normalizedInput = validateManualRunInput(input);
+        const key = idempotencyKey ?? createDashboardIdempotencyKey(normalizedInput, 'manual-run');
+        if (typeof runtime.createManualRun !== 'function') throw new Phase2DashboardError('Manual run creation is unavailable.');
+        return runtime.createManualRun({ input: normalizedInput, idempotencyKey: key });
+      });
+    },
     dispatch(controlId, options = {}) {
       if (controlId === 'load') return this.load();
       if (controlId === 'refresh') return this.refresh();
       if (controlId === 'write-run-summary') return this.writeRunSummary(options);
+      if (controlId === 'create-manual-run') return this.createManualRun(options);
       state = { loadingAction: null, lastAction: state.lastAction, error: new Phase2DashboardError('Unknown Phase 2 dashboard control.', { controlId }) };
       return Promise.resolve(snapshot());
     }
@@ -388,6 +423,11 @@ export function createPhase2DashboardRuntime({ apiClient, fetchImpl = globalThis
       const run = await writePhase2ObsidianRunSummary({ apiClient, fetchImpl, input, idempotencyKey, requestId });
       dashboard = createPhase2DashboardModel({ ...dashboard, runs: upsertRun(dashboard.runs, run), lastUpdated: run.lastUpdated ?? now() });
       return deepFreeze({ run, dashboard: createPhase2DashboardViewModel(dashboard) });
+    },
+    async createManualRun({ input, idempotencyKey, requestId = `${requestIdPrefix}-manual-run` } = {}) {
+      const run = await createPhase2ManualRun({ apiClient, fetchImpl, input, idempotencyKey, requestId });
+      dashboard = createPhase2DashboardModel({ ...dashboard, runs: upsertRun(dashboard.runs, run), lastUpdated: run.lastUpdated ?? run.createdAt ?? now() });
+      return deepFreeze({ run, dashboard: createPhase2DashboardViewModel(dashboard) });
     }
   });
 }
@@ -397,10 +437,13 @@ export function createPhase2DashboardApiRequests({ refresh = false, projectId = 
     { id: 'load-agents', label: 'Load agent status / usage', method: 'GET', path: `/agents${refresh ? '?refresh=true' : ''}` },
     { id: 'load-skills', label: 'Load Skill Registry', method: 'GET', path: '/skills' },
     { id: 'load-projects', label: 'Load projects', method: 'GET', path: '/projects' },
+    { id: 'load-project-browser', label: 'Load project browser', method: 'GET', path: `/projects/${encodeURIComponent(projectId)}/browser` },
     { id: 'load-obsidian-status', label: 'Load Obsidian status', method: 'GET', path: `/obsidian/status${refresh ? '?refresh=true' : ''}` },
     { id: 'refresh-status-usage', label: 'Refresh status / usage', method: 'GET', path: '/agents?refresh=true' },
     { id: 'upsert-project', label: 'Save project workspace', method: 'PUT', path: `/projects/${encodeURIComponent(projectId)}`, idempotent: true },
-    { id: 'write-obsidian-run-summary', label: 'Write Run Summary to Obsidian', method: 'POST', path: '/runs/obsidian-summary', idempotent: true }
+    { id: 'write-obsidian-run-summary', label: 'Write Run Summary to Obsidian', method: 'POST', path: '/runs/obsidian-summary', idempotent: true },
+    { id: 'list-runs', label: 'List runs', method: 'GET', path: '/runs' },
+    { id: 'create-manual-run', label: 'Create Manual Run', method: 'POST', path: '/runs', idempotent: true }
   ]);
 }
 
@@ -412,19 +455,33 @@ export async function loadPhase2DashboardFromApi({ apiClient, fetchImpl = global
     ['agents', apiClient.createRequest('GET', `/agents${refresh ? '?refresh=true' : ''}`, { requestId: `${requestIdPrefix}-agents` })],
     ['skills', apiClient.createRequest('GET', '/skills', { requestId: `${requestIdPrefix}-skills` })],
     ['projects', apiClient.createRequest('GET', '/projects', { requestId: `${requestIdPrefix}-projects` })],
+    ['runs', apiClient.createRequest('GET', '/runs', { requestId: `${requestIdPrefix}-runs` })],
     ['obsidian', apiClient.createRequest('GET', `/obsidian/status${refresh ? '?refresh=true' : ''}`, { requestId: `${requestIdPrefix}-obsidian` })]
   ];
   const entries = await Promise.all(requests.map(async ([key, request]) => [key, await fetchApiResource(fetchImpl, request)]));
   const snapshot = Object.fromEntries(entries);
+  const firstProjectId = snapshot.projects.data?.[0]?.id ?? null;
+  const projectBrowser = firstProjectId ? await fetchApiResource(fetchImpl, apiClient.createRequest('GET', `/projects/${encodeURIComponent(firstProjectId)}/browser`, { requestId: `${requestIdPrefix}-project-browser` })).catch((error) => ({ data: createProjectBrowserSnapshot({ projectId: firstProjectId, error: error.message }) })) : { data: null };
   return createPhase2DashboardModel({
     generatedAt,
     lastUpdated: generatedAt,
-    cached: [snapshot.agents, snapshot.skills, snapshot.projects, snapshot.obsidian].some((item) => item.cached === true),
+    cached: [snapshot.agents, snapshot.skills, snapshot.projects, snapshot.runs, snapshot.obsidian].some((item) => item.cached === true),
     agents: snapshot.agents.data,
     skills: snapshot.skills.data,
     projects: snapshot.projects.data,
-    obsidian: snapshot.obsidian.data
+    runs: snapshot.runs.data,
+    obsidian: snapshot.obsidian.data,
+    projectBrowser: projectBrowser.data
   });
+}
+
+export async function createPhase2ManualRun({ apiClient, fetchImpl = globalThis.fetch, input, idempotencyKey, requestId = 'phase2-dashboard-manual-run' } = {}) {
+  if (!apiClient || typeof apiClient.createRequest !== 'function') throw new Phase2DashboardError('Phase 2 dashboard requires an API client.', { missing: 'apiClient' });
+  if (typeof fetchImpl !== 'function') throw new Phase2DashboardError('Phase 2 dashboard requires a fetch implementation.', { missing: 'fetch' });
+  if (!idempotencyKey) throw new Phase2DashboardError('Manual run creation requires an idempotency key.', { missing: 'idempotencyKey' });
+  const request = apiClient.createRequest('POST', '/runs', { idempotencyKey, requestId, body: input });
+  const resource = await fetchApiResource(fetchImpl, request, { expectedStatus: 201 });
+  return createMinimalRun(resource.data);
 }
 
 export async function writePhase2ObsidianRunSummary({ apiClient, fetchImpl = globalThis.fetch, input, idempotencyKey, requestId = 'phase2-dashboard-run-summary' } = {}) {
@@ -468,7 +525,22 @@ function renderVisualToolbar(toolbar) {
 }
 
 function renderVisualSections(sections) {
-  return sections.map((sectionItem) => `<section class="phase2-dashboard__section" data-section-id="${escapeHtml(sectionItem.id)}"><h2>${escapeHtml(sectionItem.title)}</h2>${sectionItem.empty ? '<p>No items.</p>' : `<div>${sectionItem.items.map(renderVisualItem).join('')}</div>`}</section>`).join('');
+  return sections.map((sectionItem) => {
+    const body = sectionItem.id === 'new-run' ? renderManualRunForm() : (sectionItem.empty ? '<p>No items.</p>' : `<div>${sectionItem.items.map(renderVisualItem).join('')}</div>`);
+    return `<section class="phase2-dashboard__section" data-section-id="${escapeHtml(sectionItem.id)}"><h2>${escapeHtml(sectionItem.title)}</h2>${body}</section>`;
+  }).join('');
+}
+
+function renderManualRunForm() {
+  return [
+    '<form data-form-id="manual-run">',
+    '<p>Ask Agent Zero / General task</p>',
+    '<label>Title <input type="text" data-field="manual-run-title" name="title" required></label>',
+    '<label>Prompt / Request <textarea data-field="manual-run-prompt" name="prompt" required></textarea></label>',
+    '<label>Summary result <textarea data-field="manual-run-summary" name="summary" required></textarea></label>',
+    '<button type="button" data-control-id="create-manual-run">Create Manual Run</button>',
+    '</form>'
+  ].join('');
 }
 
 function renderVisualItem(item) {
@@ -494,13 +566,22 @@ function metric(id, label, value, tone) {
   return { id, label, value, tone };
 }
 
-function createDashboardIdempotencyKey(input = {}) {
-  const runId = input?.id ?? input?.runId ?? 'run';
-  return `phase2-dashboard-${String(runId).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-obsidian-summary`;
+function createDashboardIdempotencyKey(input = {}, suffix = 'obsidian-summary') {
+  const runId = input?.id ?? input?.runId ?? input?.title ?? 'run';
+  return `phase2-dashboard-${String(runId).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${suffix}`;
 }
 
-function control(id, label, disabled, loading, description) {
-  return { id, label, disabled: Boolean(disabled), loading: Boolean(loading), description };
+function control(id, label, disabled, loading, description, options = {}) {
+  return { id, label, disabled: Boolean(disabled), loading: Boolean(loading), description, placement: options.placement ?? 'toolbar' };
+}
+
+function validateManualRunInput(input = {}) {
+  const title = String(input.title ?? '').trim();
+  const prompt = String(input.prompt ?? '').trim();
+  const summary = String(input.summary ?? '').trim();
+  const missing = [!title && 'Title', !prompt && 'Prompt / Request', !summary && 'Summary result'].filter(Boolean);
+  if (missing.length) throw new Phase2DashboardError(`${missing.join(', ')} required.`);
+  return { title, prompt, summary };
 }
 
 function toneForAgentStatus(status) {

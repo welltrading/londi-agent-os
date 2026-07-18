@@ -15,8 +15,8 @@
     :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#08111f; color:#e5eefc; }
     body { margin:0; min-height:100vh; background: radial-gradient(circle at top right,#1f3b73 0,#0b1424 42%,#070b13 100%); }
     main { max-width:1180px; margin:0 auto; padding:40px 24px 64px; }
-    .runtime-note, .runtime-controls { border:1px solid rgba(148,163,184,.28); background:rgba(15,23,42,.72); border-radius:20px; padding:16px 18px; margin-bottom:22px; color:#cbd5e1; }
-    .runtime-controls { display:grid; grid-template-columns:1fr auto auto auto; gap:10px; align-items:end; direction:ltr; text-align:left; }
+    .runtime-controls { border:1px solid rgba(148,163,184,.28); background:rgba(15,23,42,.72); border-radius:20px; padding:16px 18px; margin-bottom:22px; color:#cbd5e1; display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:end; direction:ltr; text-align:left; }
+    .runtime-controls[hidden] { display:none; }
     .runtime-controls label { display:grid; gap:6px; color:#94a3b8; font-size:13px; }
     .runtime-controls input { width:100%; border:1px solid rgba(148,163,184,.28); border-radius:12px; padding:11px 12px; background:#0f172a; color:#e5eefc; }
     .runtime-status { min-height:20px; margin:0 0 18px; color:#93c5fd; direction:ltr; text-align:left; }
@@ -45,10 +45,9 @@
 </head>
 <body>
   <main>
-    <div class="runtime-note" dir="rtl" style="text-align:right">
-      Runtime Dashboard רשמי. הדף מרכיב את <code>createRuntimeDashboardApp()</code> בלבד; אין polling ואין קריאת רשת בזמן טעינת הדף.
-    </div>
-    <section class="runtime-controls" aria-label="Runtime Local API connection">
+    <p id="runtime-status" class="runtime-status">Connecting to local runtime…</p>
+    <!-- Dev fallback: npm run serve:runtime-dashboard. Local dev Token remains hidden. -->
+    <section id="runtime-controls" class="runtime-controls" aria-label="Runtime Local API connection" hidden>
       <label>Local API token
         <input id="token" type="password" autocomplete="off" placeholder="Paste bearer token from Credential Manager / dev shell" />
       </label>
@@ -56,15 +55,15 @@
         <input id="base-url" type="url" value="http://127.0.0.1:3210/api/v1" />
       </label>
       <button id="use-local-dev-token" type="button">Use local dev token</button>
-      <button id="mount" type="button">Mount Runtime Dashboard</button>
+      <button id="mount" type="button">Connect</button>
     </section>
-    <p id="runtime-status" class="runtime-status">Waiting for token. Serve with: npm run serve:runtime-dashboard</p>
     <div id="phase2-dashboard-root"></div>
   </main>
   <script type="module">
     import { createRuntimeDashboardApp } from '/apps/ui/src/index.js?v=runtime-dashboard-entry-1';
 
     const status = document.querySelector('#runtime-status');
+    const controls = document.querySelector('#runtime-controls');
     const tokenInput = document.querySelector('#token');
     const baseUrlInput = document.querySelector('#base-url');
     const mountButton = document.querySelector('#mount');
@@ -74,29 +73,43 @@
     const LOCAL_DEV_BASE_URL = 'http://127.0.0.1:3210/api/v1';
     let app = null;
 
-    localDevTokenButton.hidden = !LOCAL_DEV_HOSTS.has(window.location.hostname);
-    localDevTokenButton.addEventListener('click', () => {
+    function mountRuntimeDashboard({ token, baseUrl }) {
+      app?.unmount?.();
+      app = createRuntimeDashboardApp({ token, baseUrl, documentRef: document, target: '#phase2-dashboard-root' });
+      app.mount();
+      status.textContent = `Connected to ${baseUrl}. Use Load or Refresh for live data.`;
+    }
+
+    function loadLocalDevConnection() {
       if (!LOCAL_DEV_HOSTS.has(window.location.hostname)) {
-        status.textContent = 'Local dev token is only available on localhost.';
+        controls.hidden = false;
+        localDevTokenButton.hidden = true;
+        status.textContent = 'Connect to Local API to mount the dashboard.';
         return;
       }
       tokenInput.value = LOCAL_DEV_TOKEN;
       baseUrlInput.value = LOCAL_DEV_BASE_URL;
-      status.textContent = 'Local dev token loaded into the password field. Token remains hidden.';
+      controls.hidden = true;
+      mountRuntimeDashboard({ token: LOCAL_DEV_TOKEN, baseUrl: LOCAL_DEV_BASE_URL });
+    }
+
+    localDevTokenButton.hidden = !LOCAL_DEV_HOSTS.has(window.location.hostname);
+    localDevTokenButton.addEventListener('click', () => {
+      loadLocalDevConnection();
     });
 
     mountButton.addEventListener('click', () => {
       const token = tokenInput.value.trim();
       const baseUrl = baseUrlInput.value.trim();
       if (!token) {
-        status.textContent = 'Token is required before mounting.';
+        status.textContent = 'Token is required before connecting.';
         return;
       }
-      app?.unmount?.();
-      app = createRuntimeDashboardApp({ token, baseUrl, documentRef: document, target: '#phase2-dashboard-root' });
-      const mounted = app.mount();
-      status.textContent = `Mounted ${mounted.appId} through ${mounted.binderId}. Click Load or Refresh to call ${baseUrl}.`;
+      mountRuntimeDashboard({ token, baseUrl });
+      controls.hidden = true;
     });
+
+    loadLocalDevConnection();
   </script>
 </body>
 </html>

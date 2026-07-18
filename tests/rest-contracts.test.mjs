@@ -23,7 +23,7 @@ function captureThrow(fn) {
 
 assert.equal(API_BASE_PATH, '/api/v1');
 assert.equal(validateRestContracts(), true);
-assert.equal(REST_ENDPOINTS.length, 44);
+assert.equal(REST_ENDPOINTS.length, 45);
 assert.equal(listRestEndpoints().every((item) => item.fullPath.startsWith('/api/v1')), true);
 assert.equal(findRestEndpoint('GET', '/api/v1/runs/run-1/logs').path, '/runs/{runId}/logs');
 assert.equal(findRestEndpoint('POST', '/api/v1/approvals/a1/decision').concurrency, true);
@@ -31,9 +31,12 @@ assert.equal(findRestEndpoint('GET', '/api/v1/secret-aliases').command, false);
 assert.equal(findRestEndpoint('GET', '/api/v1/agents').command, false);
 assert.equal(findRestEndpoint('GET', '/api/v1/skills').command, false);
 assert.equal(findRestEndpoint('GET', '/api/v1/projects').paginated, true);
+assert.equal(findRestEndpoint('GET', '/api/v1/projects/client-ai-os/browser').paginated, true);
 assert.equal(findRestEndpoint('PUT', '/api/v1/projects/client-ai-os').idempotent, true);
 assert.equal(findRestEndpoint('GET', '/api/v1/obsidian/status').command, false);
 assert.equal(findRestEndpoint('POST', '/api/v1/runs/obsidian-summary').idempotent, true);
+assert.equal(createResourceResponse({ resourceVersion: 'v1', data: { action: 'ask-agent-zero-general-task', path: '/vault/run-1.md' } }).body.data.action, 'ask-agent-zero-general-task');
+assert.equal(createResourceResponse({ resourceVersion: 'v1', data: { message: 'secret sk-1234567890abcdef' } }).body.data.message, 'secret [REDACTED]');
 
 const read = assertRestRequestContract({ method: 'GET', path: '/api/v1/runs', headers: {}, authenticated: true });
 assert.equal(read.ok, true);

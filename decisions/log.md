@@ -123,3 +123,35 @@ Append-only log of significant project decisions.
 - **Evidence:** User could not paste the local token reliably into the password field during live dashboard use.
 - **Implication:** On `127.0.0.1`/`localhost`, the button fills the password input and default Local API base URL; outside localhost it is hidden and guarded.
 - **Guardrail:** The token remains in the password field only, is not logged or displayed, and all runtime calls still flow through Local API / HostConnector after explicit user actions.
+
+## 2026-07-18 — Runtime Dashboard Run Console slice approved for build
+
+- **Decision:** Add the first Run Console slice to the Runtime Dashboard: a `New Run` form above `Runs` that creates manual/synthetic `Ask Agent Zero / General task` run records.
+- **Spec:** `specs/2026-07-18-runtime-dashboard-run-console-slice.md`.
+- **Source discovery:** `/a0/usr/workdir/brainstorms/2026-07-18-runtime-dashboard-run-console.md`.
+- **Scope:** Fields are `Title`, `Prompt / Request`, and `Summary result`; the primary button is `Create Manual Run`; all three fields are required; created records default to `status: "succeeded"`, persist to `data/runs/runs.json`, clear the form after save, and display as simple Runs cards/rows with title, status, date, and summary.
+- **Non-goals:** No real Agent Zero execution, Codex/Claude subprocess work, Hermes runtime, Obsidian write-back, full transcripts, run detail view, advanced metadata, SQLite, or new UI framework in this slice.
+- **Guardrail:** Preserve `Dashboard UI -> Local API -> HostConnector / local runtime storage`; UI must not write files, call CLI, read secrets, or write Obsidian directly, and must not add polling or bootstrap network calls.
+
+## 2026-07-18 — Run Console should not auto-save every agent answer
+
+- **Decision:** Future real `Ask Agent Zero` runs should not auto-save every answer as a saved Run.
+- **Reason:** Not every response is useful; bad answers, noisy attempts, and intermediate iterations should not pollute the Runs history or long-term memory.
+- **Product behavior:** A real agent response should first appear as a draft/unsaved result. Londi can then choose `Save Run`, `Discard`, or `Retry / Improve`.
+- **Save rule:** Persist only user-approved/useful runs, meaningful decisions, final summaries, or real work artifacts.
+- **Guardrail:** No automatic Obsidian write-back and no automatic durable run storage for unapproved draft results.
+
+## 2026-07-18 — Runtime Dashboard Project Browser PONYTAIL slice approved
+
+- **Decision:** Add a read-only Project Browser panel to the existing Runtime Dashboard instead of building a full IDE-style three-column workspace.
+- **Reason:** Londi needs to see project folders and select context in the operator dashboard, but the smallest useful slice is a safe filesystem view, not a manual editor or full Claude chat execution surface.
+- **Scope:** Local API exposes `GET /api/v1/projects/{projectId}/browser`; HostConnector reads only explicitly registered project roots, filters hidden/ignored entries, constrains paths inside the project root, and returns entries as contract snapshots. The dashboard renders the snapshot as a `Project Browser` section.
+- **Non-goals:** No manual file editor, no automatic whole-machine scan, no Claude/Codex execution from selected files, and no direct UI filesystem access in this slice.
+- **Guardrail:** Preserve `Dashboard UI -> Local API -> HostConnector`; UI remains read-only and must not call filesystem, CLIs, secrets, Obsidian, or project files directly.
+
+## 2026-07-18 — Runtime Dashboard auto-mount replaces blocking opening screen
+
+- **Decision:** Remove the blocking Runtime Dashboard opening/connect screen from the normal localhost experience and auto-mount the dashboard with the localhost dev token.
+- **Reason:** The opening screen was useful as a technical Dev Gate, but it slowed the daily AI OS operator experience; Londi should land directly in the dashboard.
+- **Behavior:** On `127.0.0.1`/`localhost`, the entrypoint loads the local dev token and Local API base URL automatically, hides the connection controls, and mounts `createRuntimeDashboardApp()` immediately. On non-localhost hosts, a small manual connection fallback remains.
+- **Guardrail:** No polling or bootstrap data fetch was added; live data still loads only through explicit dashboard actions, and all runtime calls remain behind Local API / HostConnector.

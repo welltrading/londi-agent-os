@@ -14,6 +14,7 @@ export const PHASE2_SKILL_IDS = Object.freeze([
 ]);
 export const PHASE2_ACTIVE_SKILL_IDS = Object.freeze(['obsidian-run-summary', 'local-agent-status', 'usage-status-refresh']);
 export const PHASE2_PROJECT_STATUSES = Object.freeze(['active', 'paused', 'archived']);
+export const PHASE2_PROJECT_BROWSER_ENTRY_TYPES = Object.freeze(['directory', 'file']);
 export const OBSIDIAN_RUN_SUMMARY_TARGET_FOLDER = 'Londi Agent OS/Runs/';
 
 export class Phase2RuntimeContractError extends Error {
@@ -112,12 +113,47 @@ export function createProjectWorkspace({ id, name, rootPath, status = 'active', 
   });
 }
 
-export function createMinimalRun({ id, title, projectId = null, agentId = 'agent-zero', skillId = 'obsidian-run-summary', status = 'idle', summary = '', artifactPath = null, lastUpdated = null, error = null } = {}) {
+export function createProjectBrowserEntry({ name, path, type, size = null, selectableAsContext = true } = {}) {
+  if (!name || !path) throw new Phase2RuntimeContractError('Project browser entry requires name and path.');
+  assertOneOf(type, PHASE2_PROJECT_BROWSER_ENTRY_TYPES, 'project browser entry type');
+  return deepFreeze({
+    name: sanitizeText(name),
+    path: sanitizeRelativeProjectPath(path, 'projectBrowserPath'),
+    type,
+    size: size === null || size === undefined ? null : numberOrUndefined(size),
+    selectableAsContext: Boolean(selectableAsContext)
+  });
+}
+
+export function createProjectBrowserSnapshot({ projectId = null, rootPath = null, relativePath = '.', entries = [], loadedAt = null, error = null } = {}) {
+  return deepFreeze({
+    projectId: projectId ? sanitizeSlug(projectId) : null,
+    rootPath: rootPath ? sanitizeText(rootPath) : null,
+    relativePath: sanitizeRelativeProjectPath(relativePath || '.', 'projectBrowserRelativePath'),
+    entries: entries.map(createProjectBrowserEntry),
+    loadedAt,
+    error: error ? sanitizeText(error) : null
+  });
+}
+
+export function createMinimalRun({ id, title, projectId = null, agentId = 'agent-zero', skillId = 'obsidian-run-summary', status = 'idle', summary = '', artifactPath = null, lastUpdated = null, createdAt = null, error = null } = {}) {
   if (!id || !title) throw new Phase2RuntimeContractError('Minimal run requires id and title.');
   assertOneOf(agentId, PHASE2_AGENT_IDS, 'run agent id');
   assertOneOf(skillId, PHASE2_SKILL_IDS, 'run skill id');
   assertOneOf(status, ['idle', 'running', 'succeeded', 'failed'], 'run status');
-  return deepFreeze({ id: sanitizeSlug(id), title: sanitizeText(title), projectId: projectId ? sanitizeSlug(projectId) : null, agentId, skillId, status, summary: sanitizeText(summary), artifactPath: artifactPath ? sanitizeText(artifactPath) : null, lastUpdated, error: error ? sanitizeText(error) : null });
+  return deepFreeze({ id: sanitizeSlug(id), title: sanitizeText(title), projectId: projectId ? sanitizeSlug(projectId) : null, agentId, skillId, status, summary: sanitizeText(summary), artifactPath: artifactPath ? sanitizeText(artifactPath) : null, lastUpdated, createdAt, error: error ? sanitizeText(error) : null });
+}
+
+
+export function createManualRunRecord({ id, title, prompt, summary, status = 'succeeded', createdAt = new Date().toISOString(), projectId = null } = {}) {
+  if (!id || !title || !prompt || !summary) throw new Phase2RuntimeContractError('Manual run requires id, title, prompt and summary.');
+  assertOneOf(status, ['succeeded'], 'manual run status');
+  return deepFreeze({
+    ...createMinimalRun({ id, title, projectId, agentId: 'agent-zero', skillId: 'orchestration-control', status, summary, createdAt, lastUpdated: createdAt }),
+    type: 'manual',
+    action: 'ask-agent-zero-general-task',
+    prompt: sanitizeText(prompt)
+  });
 }
 
 export function createObsidianRunSummaryFilename({ date = new Date().toISOString(), runId, title } = {}) {

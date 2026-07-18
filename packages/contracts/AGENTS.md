@@ -6,7 +6,7 @@ Shared contracts package for configuration, compatibility, pipeline templates, a
 
 ## Ownership
 
-- `src/phase2-runtime.js` owns four-agent, skills, usage, project workspace, minimal run, and Obsidian Run Summary contracts.
+- `src/phase2-runtime.js` owns four-agent, skills, usage, project workspace, project browser snapshot, minimal run, manual run, and Obsidian Run Summary contracts.
 - `src/index.js` owns public exports.
 
 ## Local Contracts
