@@ -155,3 +155,10 @@ Append-only log of significant project decisions.
 - **Reason:** The opening screen was useful as a technical Dev Gate, but it slowed the daily AI OS operator experience; Londi should land directly in the dashboard.
 - **Behavior:** On `127.0.0.1`/`localhost`, the entrypoint loads the local dev token and Local API base URL automatically, hides the connection controls, and mounts `createRuntimeDashboardApp()` immediately. On non-localhost hosts, a small manual connection fallback remains.
 - **Guardrail:** No polling or bootstrap data fetch was added; live data still loads only through explicit dashboard actions, and all runtime calls remain behind Local API / HostConnector.
+
+## 2026-07-18 — Runtime Dashboard New Run uses chat composer
+
+- **Decision:** Replace the `New Run` three-field manual form with a chat-like `Ask Agent Zero` composer.
+- **Reason:** Londi expects the Run Console to feel like chat, not a manual database-entry form.
+- **Scope:** The visible UI now uses one message textarea and `Send`; title and summary are derived from the message while the saved backend object remains a synthetic manual run in `data/runs/runs.json`.
+- **Guardrail:** This remains manual/synthetic only; sending does not execute Agent Zero, Codex, Claude Code, Hermes, subprocesses, Obsidian writes, or auto-merge behavior.

@@ -12,7 +12,7 @@ Turn the Runtime Dashboard from a status panel into a practical first Run Consol
 The screen should prove this product flow:
 
 ```text
-New Run form -> Local API -> data/runs/runs.json -> refreshed Runs list
+New Run chat composer -> Local API -> data/runs/runs.json -> refreshed Runs list
 ```
 
 ## Scope
@@ -22,13 +22,13 @@ Add the smallest useful Run Console slice to the existing Runtime Dashboard.
 It must provide:
 
 - A new `New Run` section above the existing `Runs` section.
-- A manual run creation form for `Ask Agent Zero / General task`.
-- Form fields:
-  - `Title`
-  - `Prompt / Request`
-  - `Summary result`
-- A primary button labeled `Create Manual Run`.
-- Minimal required-field validation for all three fields.
+- A chat-like composer for `Ask Agent Zero / General task`.
+- Composer elements:
+  - `Ask Agent Zero` header
+  - recent manual messages area
+  - one required `Message` textarea
+- A primary button labeled `Send`.
+- Minimal required-message validation.
 - Local persistence first through the Local API.
 - Storage in a single JSON file at `data/runs/runs.json`.
 - Newly created runs displayed in the existing `Runs` list.
@@ -62,13 +62,13 @@ Rules:
 
 ### Placement
 
-The form lives in a new `New Run` section above the existing `Runs` section.
+The chat composer lives in a new `New Run` section above the existing `Runs` section.
 
 ### Submit
 
-Clicking `Create Manual Run` should:
+Clicking `Send` should:
 
-1. Validate `Title`, `Prompt / Request`, and `Summary result` are non-empty.
+1. Validate `Message` is non-empty and derive `title` and `summary` from it.
 2. If validation fails, show a short inline error and do not save.
 3. If validation passes, call the Local API to create the manual run.
 4. Persist the run to `data/runs/runs.json` through the Local API / server side.
@@ -126,7 +126,7 @@ Do not add in this slice:
 Expected:
 
 - `apps/local-api/src/...` — Local API endpoint/handler for creating/listing manual runs if no existing contract is sufficient.
-- `apps/ui/src/...` — Runtime Dashboard screen/controller/binder integration for the `New Run` form.
+- `apps/ui/src/...` — Runtime Dashboard screen/controller/binder integration for the `New Run` chat composer.
 - `apps/ui/runtime-dashboard.html` — only if the static entrypoint needs minor harness support.
 - `tests/rest-contracts.test.mjs` — Local API run creation/listing contract coverage.
 - `tests/ui-shell.test.mjs` or a new targeted UI test — form validation, submit behavior, list refresh, no direct storage access.
@@ -145,8 +145,8 @@ Avoid unless clearly required:
 This slice is done only when all are true:
 
 1. `New Run` section appears above `Runs` in the Runtime Dashboard.
-2. The form contains `Title`, `Prompt / Request`, and `Summary result`.
-3. `Create Manual Run` validates all three fields as required.
+2. The section looks like chat: `Ask Agent Zero`, recent messages, one message textarea, and `Send`.
+3. `Send` validates the message as required and derives title/summary behind the scenes.
 4. Valid submit creates a manual run through the Local API.
 5. The run is persisted in `data/runs/runs.json`.
 6. The new run appears in `Runs` as a simple card/row with title, status, creation date, and summary.

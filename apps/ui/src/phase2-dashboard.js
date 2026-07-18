@@ -83,7 +83,7 @@ export function createPhase2DashboardInteractionModel(viewModel = createPhase2Da
     load: 'Loading dashboard snapshot',
     refresh: 'Refreshing status / usage',
     'write-run-summary': 'Writing Run Summary to Obsidian',
-    'create-manual-run': 'Creating manual run'
+    'create-manual-run': 'Sending chat message'
   }[loadingAction] ?? (lastAction ? `Last action: ${lastAction}` : 'Ready');
   return deepFreeze({
     ...viewModel,
@@ -99,7 +99,7 @@ export function createPhase2DashboardInteractionModel(viewModel = createPhase2Da
       control('load', 'Load', loading, loadingAction === 'load', 'Load agent status, skills, projects, and Obsidian status.'),
       control('refresh', 'Refresh', loading, loadingAction === 'refresh', 'Manual refresh for agent/usage and Obsidian cache.'),
       control('write-run-summary', 'Write Run Summary', loading || viewModel.obsidianTone !== 'green', loadingAction === 'write-run-summary', 'Write the selected minimal run summary through Local API.'),
-      control('create-manual-run', 'Create Manual Run', loading, loadingAction === 'create-manual-run', 'Create a manual Ask Agent Zero / General task run through Local API.', { placement: 'new-run-form' })
+      control('create-manual-run', 'Send', loading, loadingAction === 'create-manual-run', 'Send an Ask Agent Zero chat message and save it as a manual run through Local API.', { placement: 'new-run-form' })
     ]
   });
 }
@@ -127,7 +127,7 @@ export function createPhase2DashboardScreenModel(interaction = createPhase2Dashb
       section('agents', 'Agent Management', model.agents),
       section('projects', 'Project Workspace', model.projects),
       section('project-browser', 'Project Browser', model.projectBrowser?.entries ?? []),
-      section('new-run', 'New Run', [{ label: 'Ask Agent Zero / General task', action: 'create-manual-run' }]),
+      section('new-run', 'New Run', model.runs.filter((run) => run.agentId === 'agent-zero').slice(-3)),
       section('runs', 'Runs', model.runs),
       section('obsidian', 'Obsidian', [{ label: model.obsidianLabel, tone: model.obsidianTone }]),
       section('skills', 'Skill Registry', model.skills)
@@ -316,11 +316,7 @@ export function createPhase2DashboardDomBinder({ screen, documentRef = globalThi
     if (controlId !== 'create-manual-run') return options;
     return { ...options, input: readManualRunFormInput() };
   };
-  const readManualRunFormInput = () => ({
-    title: readFormValue('manual-run-title'),
-    prompt: readFormValue('manual-run-prompt'),
-    summary: readFormValue('manual-run-summary')
-  });
+  const readManualRunFormInput = () => createChatManualRunInput(readFormValue('manual-run-prompt'));
   const readFormValue = (field) => mountedTarget?.querySelector?.(`[data-field="${field}"]`)?.value ?? '';
 
   return Object.freeze({
@@ -526,21 +522,41 @@ function renderVisualToolbar(toolbar) {
 
 function renderVisualSections(sections) {
   return sections.map((sectionItem) => {
-    const body = sectionItem.id === 'new-run' ? renderManualRunForm() : (sectionItem.empty ? '<p>No items.</p>' : `<div>${sectionItem.items.map(renderVisualItem).join('')}</div>`);
+    const body = sectionItem.id === 'new-run' ? renderManualRunForm(sectionItem) : (sectionItem.empty ? '<p>No items.</p>' : `<div>${sectionItem.items.map(renderVisualItem).join('')}</div>`);
     return `<section class="phase2-dashboard__section" data-section-id="${escapeHtml(sectionItem.id)}"><h2>${escapeHtml(sectionItem.title)}</h2>${body}</section>`;
   }).join('');
 }
 
-function renderManualRunForm() {
+function renderManualRunForm(sectionItem = { items: [] }) {
+  const messages = sectionItem.items.length ? sectionItem.items.map(renderChatMessage).join('') : '<p class="phase2-dashboard__chat-empty">Start a new Ask Agent Zero note.</p>';
   return [
-    '<form data-form-id="manual-run">',
-    '<p>Ask Agent Zero / General task</p>',
-    '<label>Title <input type="text" data-field="manual-run-title" name="title" required></label>',
-    '<label>Prompt / Request <textarea data-field="manual-run-prompt" name="prompt" required></textarea></label>',
-    '<label>Summary result <textarea data-field="manual-run-summary" name="summary" required></textarea></label>',
-    '<button type="button" data-control-id="create-manual-run">Create Manual Run</button>',
+    '<form class="phase2-dashboard__chat" data-form-id="manual-run">',
+    '<div class="phase2-dashboard__chat-header"><strong>Ask Agent Zero</strong><span>General task</span></div>',
+    `<div class="phase2-dashboard__chat-messages" aria-live="polite">${messages}</div>`,
+    '<label class="phase2-dashboard__chat-composer"><span>Message</span><textarea data-field="manual-run-prompt" name="prompt" rows="3" placeholder="כתוב בקשה..." required></textarea></label>',
+    '<button type="button" data-control-id="create-manual-run">Send</button>',
     '</form>'
   ].join('');
+}
+
+function renderChatMessage(run) {
+  const text = stripManualChatSummary(run.summary) || run.title || '';
+  const time = run.createdAt ?? run.lastUpdated ?? '';
+  return `<article class="phase2-dashboard__chat-message" data-run-id="${escapeHtml(run.id)}"><span>${escapeHtml(text)}</span>${time ? `<time>${escapeHtml(time)}</time>` : ''}</article>`;
+}
+
+function stripManualChatSummary(value) {
+  return String(value ?? '').replace(/^Manual Ask Agent Zero chat message:\s*/, '');
+}
+
+function createChatManualRunInput(promptValue) {
+  const prompt = String(promptValue ?? '').trim();
+  const title = prompt.split(/\s+/).slice(0, 8).join(' ') || 'Ask Agent Zero';
+  return {
+    title,
+    prompt,
+    summary: prompt ? `Manual Ask Agent Zero chat message: ${prompt}` : ''
+  };
 }
 
 function renderVisualItem(item) {
@@ -576,11 +592,10 @@ function control(id, label, disabled, loading, description, options = {}) {
 }
 
 function validateManualRunInput(input = {}) {
-  const title = String(input.title ?? '').trim();
   const prompt = String(input.prompt ?? '').trim();
-  const summary = String(input.summary ?? '').trim();
-  const missing = [!title && 'Title', !prompt && 'Prompt / Request', !summary && 'Summary result'].filter(Boolean);
-  if (missing.length) throw new Phase2DashboardError(`${missing.join(', ')} required.`);
+  const title = String(input.title ?? '').trim() || prompt.split(/\s+/).slice(0, 8).join(' ') || 'Ask Agent Zero';
+  const summary = String(input.summary ?? '').trim() || (prompt ? `Manual Ask Agent Zero chat message: ${prompt}` : '');
+  if (!prompt) throw new Phase2DashboardError('Message required.');
   return { title, prompt, summary };
 }
 

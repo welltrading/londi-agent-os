@@ -95,6 +95,13 @@ assert.equal(visualAdapter.adapterId, 'phase2-dashboard-visual-adapter');
 assert.equal(visualAdapter.target, '#dashboard');
 assert.equal(visualAdapter.html.includes('data-shell-id="phase2-dashboard-shell"'), true);
 assert.equal(visualAdapter.html.includes('data-control-id="refresh"'), true);
+assert.equal(visualAdapter.html.includes('phase2-dashboard__chat'), true);
+assert.equal(visualAdapter.html.includes('data-field="manual-run-prompt"'), true);
+assert.equal(visualAdapter.html.includes('data-field="manual-run-title"'), false);
+assert.equal(visualAdapter.html.includes('Summary result'), false);
+assert.equal(visualAdapter.html.includes('data-control-id="create-manual-run"'), true);
+assert.equal(visualAdapter.html.includes('>Send</button>'), true);
+assert.equal(visualAdapter.html.includes('Manual Ask Agent Zero chat message:'), false);
 assert.equal(visualAdapter.bindings.find((binding) => binding.controlId === 'refresh').handler.type, 'dispatch-control');
 assert.equal(visualAdapter.bindings.every((binding) => binding.event === 'click'), true);
 assert.equal(visualAdapter.renderPolicy.staticHtmlOnly, true);
@@ -147,6 +154,26 @@ assert.equal(refreshedInteraction.runtime.lastAction, 'refresh');
 const writtenInteraction = await controller.dispatch('write-run-summary', { input: { id: 'run-2', title: 'API summary' } });
 assert.equal(writtenInteraction.runtime.lastAction, 'write-run-summary');
 assert.equal(controllerCalls.at(-1)[1].idempotencyKey, 'idem-run-2');
+controllerCalls.length = 0;
+const manualController = createPhase2DashboardController({
+  runtime: {
+    snapshot: () => viewModel,
+    load: () => Promise.resolve(loadedControllerView),
+    refresh: () => Promise.resolve(loadedControllerView),
+    writeRunSummary: () => Promise.resolve({ dashboard: loadedControllerView }),
+    createManualRun: (options) => {
+      controllerCalls.push(['createManualRun', options]);
+      return Promise.resolve({ run: { id: 'run-4' }, dashboard: loadedControllerView });
+    }
+  }
+});
+const manualInteraction = await manualController.dispatch('create-manual-run', { input: { prompt: 'Build the chat composer' } });
+assert.equal(manualInteraction.runtime.lastAction, 'create-manual-run');
+assert.equal(controllerCalls.at(-1)[1].input.title, 'Build the chat composer');
+assert.equal(controllerCalls.at(-1)[1].input.summary, 'Manual Ask Agent Zero chat message: Build the chat composer');
+assert.equal(controllerCalls.at(-1)[1].idempotencyKey, 'phase2-dashboard-build-the-chat-composer-manual-run');
+const missingMessage = await manualController.dispatch('create-manual-run', { input: { prompt: '   ' } });
+assert.equal(missingMessage.runtime.error, 'Message required.');
 const unknownInteraction = await controller.dispatch('missing-control');
 assert.equal(unknownInteraction.runtime.error, 'Unknown Phase 2 dashboard control.');
 assert.throws(() => createPhase2DashboardController({ runtime: {} }), Phase2DashboardError);
@@ -196,6 +223,7 @@ assert.equal(mounted.activeBindingCount, 4);
 assert.equal(mounted.renderPolicy.controlledDomMutation, true);
 assert.equal(mounted.renderPolicy.noPolling, true);
 assert.equal(rootNode.innerHTML.includes('data-shell-id="phase2-dashboard-shell"'), true);
+assert.equal(rootNode.innerHTML.includes('phase2-dashboard__chat-composer'), true);
 await rootNode.querySelector('[data-control-id="refresh"]').click();
 assert.deepEqual(screenCalls.at(-1), ['dom', 'refresh', { source: 'dom-binder', controlId: 'refresh', bindingEvent: 'click' }]);
 assert.equal('event' in screenCalls.at(-1)[2], false);
