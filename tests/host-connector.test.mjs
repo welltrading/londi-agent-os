@@ -61,9 +61,10 @@ try {
   assert.equal(note.includes('- Project ID: client-ai-os'), true);
   assert.equal(note.includes('Project run summary was created.'), true);
 
-  const manualRun = connector.createManualRun({ title: 'Manual run', prompt: 'Ask Agent Zero to summarize this.', summary: 'Manual summary.' });
+  const manualRun = connector.createManualRun({ title: 'Manual run', prompt: 'Ask Agent Zero to summarize this.', summary: 'Manual summary.', agentId: 'claude-code' });
   assert.equal(manualRun.type, 'manual');
-  assert.equal(manualRun.action, 'ask-agent-zero-general-task');
+  assert.equal(manualRun.agentId, 'claude-code');
+  assert.equal(manualRun.action, 'ask-claude-code-general-task');
   assert.equal(manualRun.status, 'succeeded');
   assert.equal(connector.listRuns()[0].id, manualRun.id);
   const persistedRuns = JSON.parse(readFileSync(join(temp, 'runs', 'runs.json'), 'utf8')).runs;
@@ -127,11 +128,12 @@ try {
   const listRunsEmpty = await fetch('http://127.0.0.1:3213/api/v1/runs', { headers });
   assert.equal(listRunsEmpty.status, 200);
   assert.equal((await listRunsEmpty.json()).data.length, 0);
-  const manualRunResponse = await fetch('http://127.0.0.1:3213/api/v1/runs', { method: 'POST', headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'idem-manual-run' }, body: JSON.stringify({ title: 'Live manual run', prompt: 'Capture this manually.', summary: 'Captured.' }) });
+  const manualRunResponse = await fetch('http://127.0.0.1:3213/api/v1/runs', { method: 'POST', headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'idem-manual-run' }, body: JSON.stringify({ title: 'Live manual run', prompt: 'Capture this manually.', summary: 'Captured.', agentId: 'codex' }) });
   assert.equal(manualRunResponse.status, 201);
   const manualRunPayload = await manualRunResponse.json();
   assert.equal(manualRunPayload.data.type, 'manual');
-  assert.equal(manualRunPayload.data.action, 'ask-agent-zero-general-task');
+  assert.equal(manualRunPayload.data.agentId, 'codex');
+  assert.equal(manualRunPayload.data.action, 'ask-codex-general-task');
   assert.equal(existsSync(join(temp, 'api-runs', 'runs.json')), true);
   const listRunsFilled = await fetch('http://127.0.0.1:3213/api/v1/runs', { headers });
   assert.equal((await listRunsFilled.json()).data[0].title, 'Live manual run');

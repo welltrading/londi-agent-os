@@ -71,7 +71,7 @@ export function createPhase2DashboardViewModel(model = createPhase2DashboardMode
       error: dashboard.projectBrowser.error
     } : null,
     skills: dashboard.skills.map((skill) => ({ id: skill.id, displayName: skill.displayName, active: skill.active, agents: skill.agentIds.length })),
-    runs: dashboard.runs.map((run) => ({ id: run.id, title: run.title, status: run.status, agentId: run.agentId, skillId: run.skillId, summary: run.summary, artifactPath: run.artifactPath, lastUpdated: run.lastUpdated, createdAt: run.createdAt ?? run.lastUpdated, tone: toneForRunStatus(run.status) })),
+    runs: dashboard.runs.map((run) => ({ id: run.id, title: run.title, status: run.status, agentId: run.agentId, agentName: dashboard.agents.find((agent) => agent.id === run.agentId)?.name ?? run.agentId, skillId: run.skillId, summary: run.summary, artifactPath: run.artifactPath, lastUpdated: run.lastUpdated, createdAt: run.createdAt ?? run.lastUpdated, tone: toneForRunStatus(run.status) })),
     actions: dashboard.actions,
     errors: dashboard.errors
   });
@@ -127,7 +127,7 @@ export function createPhase2DashboardScreenModel(interaction = createPhase2Dashb
       section('agents', 'Agent Management', model.agents),
       section('projects', 'Project Workspace', model.projects),
       section('project-browser', 'Project Browser', model.projectBrowser?.entries ?? []),
-      section('new-run', 'New Run', model.runs.filter((run) => run.agentId === 'agent-zero').slice(-3)),
+      section('new-run', 'New Run', model.runs.slice(-3), { agents: model.agents }),
       section('runs', 'Runs', model.runs),
       section('obsidian', 'Obsidian', [{ label: model.obsidianLabel, tone: model.obsidianTone }]),
       section('skills', 'Skill Registry', model.skills)
@@ -175,7 +175,8 @@ export function createPhase2DashboardShellModel(screen = createPhase2DashboardSc
     title: item.title,
     itemCount: item.items.length,
     empty: item.items.length === 0,
-    items: item.items
+    items: item.items,
+    meta: item.meta ?? {}
   }));
   return deepFreeze({
     shellId: 'phase2-dashboard-shell',
@@ -316,7 +317,7 @@ export function createPhase2DashboardDomBinder({ screen, documentRef = globalThi
     if (controlId !== 'create-manual-run') return options;
     return { ...options, input: readManualRunFormInput() };
   };
-  const readManualRunFormInput = () => createChatManualRunInput(readFormValue('manual-run-prompt'));
+  const readManualRunFormInput = () => createChatManualRunInput(readFormValue('manual-run-prompt'), readFormValue('manual-run-agent'));
   const readFormValue = (field) => mountedTarget?.querySelector?.(`[data-field="${field}"]`)?.value ?? '';
 
   return Object.freeze({
@@ -527,11 +528,14 @@ function renderVisualSections(sections) {
   }).join('');
 }
 
-function renderManualRunForm(sectionItem = { items: [] }) {
-  const messages = sectionItem.items.length ? sectionItem.items.map(renderChatMessage).join('') : '<p class="phase2-dashboard__chat-empty">Start a new Ask Agent Zero note.</p>';
+function renderManualRunForm(sectionItem = { items: [], meta: {} }) {
+  const messages = sectionItem.items.length ? sectionItem.items.map(renderChatMessage).join('') : '<p class="phase2-dashboard__chat-empty">Start a new agent note.</p>';
+  const agents = sectionItem.meta?.agents?.length ? sectionItem.meta.agents : [{ id: 'agent-zero', name: 'Agent Zero' }];
   return [
     '<form class="phase2-dashboard__chat" data-form-id="manual-run">',
-    '<div class="phase2-dashboard__chat-header"><strong>Ask Agent Zero</strong><span>General task</span></div>',
+    '<div class="phase2-dashboard__chat-header"><strong>New chat</strong><label><span>Agent</span><select data-field="manual-run-agent" name="agentId">',
+    agents.map((agent) => `<option value="${escapeHtml(agent.id)}" ${agent.id === 'agent-zero' ? 'selected' : ''}>${escapeHtml(agent.name)}</option>`).join(''),
+    '</select></label><span>General task</span></div>',
     `<div class="phase2-dashboard__chat-messages" aria-live="polite">${messages}</div>`,
     '<label class="phase2-dashboard__chat-composer"><span>Message</span><textarea data-field="manual-run-prompt" name="prompt" rows="3" placeholder="כתוב בקשה..." required></textarea></label>',
     '<button type="button" data-control-id="create-manual-run">Send</button>',
@@ -546,16 +550,18 @@ function renderChatMessage(run) {
 }
 
 function stripManualChatSummary(value) {
-  return String(value ?? '').replace(/^Manual Ask Agent Zero chat message:\s*/, '');
+  return String(value ?? '').replace(/^Manual (Ask Agent Zero|[a-z0-9._-]+) chat message:\s*/i, '');
 }
 
-function createChatManualRunInput(promptValue) {
+function createChatManualRunInput(promptValue, agentIdValue = 'agent-zero') {
   const prompt = String(promptValue ?? '').trim();
-  const title = prompt.split(/\s+/).slice(0, 8).join(' ') || 'Ask Agent Zero';
+  const agentId = String(agentIdValue ?? 'agent-zero').trim() || 'agent-zero';
+  const title = prompt.split(/\s+/).slice(0, 8).join(' ') || 'New agent chat';
   return {
     title,
     prompt,
-    summary: prompt ? `Manual Ask Agent Zero chat message: ${prompt}` : ''
+    summary: prompt ? `Manual ${agentId} chat message: ${prompt}` : '',
+    agentId
   };
 }
 
@@ -574,8 +580,8 @@ function kebabCase(value) {
   return String(value).replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
 }
 
-function section(id, title, items) {
-  return { id, title, items };
+function section(id, title, items, meta = {}) {
+  return { id, title, items, meta };
 }
 
 function metric(id, label, value, tone) {
@@ -593,10 +599,11 @@ function control(id, label, disabled, loading, description, options = {}) {
 
 function validateManualRunInput(input = {}) {
   const prompt = String(input.prompt ?? '').trim();
-  const title = String(input.title ?? '').trim() || prompt.split(/\s+/).slice(0, 8).join(' ') || 'Ask Agent Zero';
-  const summary = String(input.summary ?? '').trim() || (prompt ? `Manual Ask Agent Zero chat message: ${prompt}` : '');
+  const agentId = String(input.agentId ?? 'agent-zero').trim() || 'agent-zero';
+  const title = String(input.title ?? '').trim() || prompt.split(/\s+/).slice(0, 8).join(' ') || 'New agent chat';
+  const summary = String(input.summary ?? '').trim() || (prompt ? `Manual ${agentId} chat message: ${prompt}` : '');
   if (!prompt) throw new Phase2DashboardError('Message required.');
-  return { title, prompt, summary };
+  return { title, prompt, summary, agentId };
 }
 
 function toneForAgentStatus(status) {

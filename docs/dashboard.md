@@ -24,7 +24,7 @@ The UI must call Local API/HostConnector contracts only; it must not call local 
 - `phase2DashboardController.dispatch('load')` fetches agents, skills, projects, the first registered project's read-only browser snapshot, and Obsidian status through the runtime.
 - `phase2DashboardController.dispatch('refresh')` repeats the load with the refresh flag for agent/usage and Obsidian status.
 - `phase2DashboardController.dispatch('write-run-summary', { input })` posts the minimal run summary through Local API, generates an idempotency key when needed, and updates the dashboard view model from the returned run.
-- `phase2DashboardController.dispatch('create-manual-run', { input })` validates a single chat `Message`, derives the manual run title and summary from that message, posts a synthetic `Ask Agent Zero / General task` run through Local API, and refreshes the Runs list from Local API storage.
+- `phase2DashboardController.dispatch('create-manual-run', { input })` validates a selected `agentId` plus a single chat `Message`, derives the manual run title and summary from that message, posts a synthetic selected-agent `/ General task` run through Local API, and refreshes the Runs list from Local API storage.
 - Unknown controls and runtime failures render as inline interaction-state errors instead of adding direct side effects to the UI.
 
 `createPhase2DashboardInteractionModel()` wraps the view model with UI-ready runtime state and control descriptors for Load, Refresh, Write Run Summary, and Create Manual Run. `createPhase2DashboardScreenModel()` turns that interaction model into render-ready sections, buttons, status labels, and accessibility live text. `phase2DashboardScreen.render()` returns the current screen model; `phase2DashboardScreen.click(controlId, options)` routes enabled buttons through `phase2DashboardController.dispatch(...)` only.
@@ -44,6 +44,6 @@ The screen, shell, visual adapter, and DOM binder preserve the runtime guardrail
 
 ### Runtime Dashboard Run Console slice
 
-The first Run Console slice is intentionally manual/synthetic. The dashboard renders a `New Run` section above `Runs` as a small chat composer: `Ask Agent Zero`, a recent-message area, one `Message` textarea, and a `Send` button. The UI derives the manual run title and summary from the message and stores a local record only; it does not start Agent Zero, Codex, Claude Code, Hermes, or any subprocess.
+The first Run Console slice is intentionally manual/synthetic. The dashboard renders a `New Run` section above `Runs` as a small chat composer: an `Agent` selector, a recent-message area, one `Message` textarea, and a `Send` button. The UI derives the manual run title and summary from the message, stores the selected target agent on the run, and stores a local record only; it does not start Agent Zero, Codex, Claude Code, Hermes, or any subprocess.
 
-Manual run records use the contract `{ id, type: "manual", action: "ask-agent-zero-general-task", title, prompt, summary, status: "succeeded", createdAt }`. Local API persists them in `data/runs/runs.json` through HostConnector. Obsidian write-back remains a separate explicit action.
+Manual run records use the contract `{ id, type: "manual", action: "ask-{agentId}-general-task", agentId, title, prompt, summary, status: "succeeded", createdAt }`. Local API persists them in `data/runs/runs.json` through HostConnector. Obsidian write-back remains a separate explicit action.

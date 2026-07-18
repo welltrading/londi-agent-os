@@ -96,6 +96,8 @@ assert.equal(visualAdapter.target, '#dashboard');
 assert.equal(visualAdapter.html.includes('data-shell-id="phase2-dashboard-shell"'), true);
 assert.equal(visualAdapter.html.includes('data-control-id="refresh"'), true);
 assert.equal(visualAdapter.html.includes('phase2-dashboard__chat'), true);
+assert.equal(visualAdapter.html.includes('data-field="manual-run-agent"'), true);
+assert.equal(visualAdapter.html.includes('<option value="codex"'), true);
 assert.equal(visualAdapter.html.includes('data-field="manual-run-prompt"'), true);
 assert.equal(visualAdapter.html.includes('data-field="manual-run-title"'), false);
 assert.equal(visualAdapter.html.includes('Summary result'), false);
@@ -167,10 +169,11 @@ const manualController = createPhase2DashboardController({
     }
   }
 });
-const manualInteraction = await manualController.dispatch('create-manual-run', { input: { prompt: 'Build the chat composer' } });
+const manualInteraction = await manualController.dispatch('create-manual-run', { input: { prompt: 'Build the chat composer', agentId: 'codex' } });
 assert.equal(manualInteraction.runtime.lastAction, 'create-manual-run');
 assert.equal(controllerCalls.at(-1)[1].input.title, 'Build the chat composer');
-assert.equal(controllerCalls.at(-1)[1].input.summary, 'Manual Ask Agent Zero chat message: Build the chat composer');
+assert.equal(controllerCalls.at(-1)[1].input.agentId, 'codex');
+assert.equal(controllerCalls.at(-1)[1].input.summary, 'Manual codex chat message: Build the chat composer');
 assert.equal(controllerCalls.at(-1)[1].idempotencyKey, 'phase2-dashboard-build-the-chat-composer-manual-run');
 const missingMessage = await manualController.dispatch('create-manual-run', { input: { prompt: '   ' } });
 assert.equal(missingMessage.runtime.error, 'Message required.');
@@ -255,7 +258,7 @@ const fetchImpl = async (url, options) => {
     '/runs': { data: dashboard.runs, resourceVersion: 'runs-v1' },
     '/obsidian/status': { data: { available: true, targetFolder: 'Londi Agent OS/Runs/', cached: true }, resourceVersion: 'obsidian-v1' },
     '/runs/obsidian-summary': { data: { id: 'run-2', title: 'API summary', projectId: 'client-project', status: 'succeeded', summary: 'written', artifactPath: '/vault/run-2.md' }, resourceVersion: 'run-v1' },
-    '/runs:POST': { data: { id: 'run-3', title: 'Manual API run', status: 'succeeded', summary: 'manual summary', createdAt: '2026-07-14T18:06:00.000Z' }, resourceVersion: 'run-manual-v1' }
+    '/runs:POST': { data: { id: 'run-3', title: 'Manual API run', agentId: 'codex', status: 'succeeded', summary: 'manual summary', createdAt: '2026-07-14T18:06:00.000Z' }, resourceVersion: 'run-manual-v1' }
   };
   const key = options.method === 'POST' && path === '/runs' ? '/runs:POST' : path;
   return { status: path === '/runs/obsidian-summary' || key === '/runs:POST' ? 201 : 200, json: async () => payloads[key] };
@@ -278,6 +281,7 @@ const manualRun = await createPhase2ManualRun({
   input: { title: 'Manual API run', prompt: 'Do something', summary: 'manual summary' }
 });
 assert.equal(manualRun.status, 'succeeded');
+assert.equal(manualRun.agentId, 'codex');
 assert.equal(manualRun.createdAt, '2026-07-14T18:06:00.000Z');
 assert.equal(calls.at(-1).options.headers['idempotency-key'], 'idem-manual');
 await assert.rejects(() => createPhase2ManualRun({ apiClient, fetchImpl, input: { title: 'x' } }), Phase2DashboardError);

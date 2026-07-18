@@ -18,7 +18,7 @@ Local API and service shell. This package exposes stable API/service boundaries 
 - Agent status/usage collection must show source/cached/lastUpdated and must not fake API billing for subscription CLI tools.
 - Manual refresh is on-demand only; no background polling.
 - Writes/commands must stay idempotency-aware in REST contract metadata.
-- Manual Run Console records are stored through HostConnector in `data/runs/runs.json`; creating them must not execute agents or write Obsidian.
+- Manual Run Console records are stored through HostConnector in `data/runs/runs.json` with their selected `agentId`; creating them must not execute agents or write Obsidian.
 - Project Browser snapshots are read-only HostConnector filesystem views for explicitly registered project roots; paths must stay inside the project root and hidden/ignored entries must not be exposed.
 
 ## Work Guidance

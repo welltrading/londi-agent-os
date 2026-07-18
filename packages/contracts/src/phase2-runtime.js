@@ -145,13 +145,14 @@ export function createMinimalRun({ id, title, projectId = null, agentId = 'agent
 }
 
 
-export function createManualRunRecord({ id, title, prompt, summary, status = 'succeeded', createdAt = new Date().toISOString(), projectId = null } = {}) {
+export function createManualRunRecord({ id, title, prompt, summary, status = 'succeeded', createdAt = new Date().toISOString(), projectId = null, agentId = 'agent-zero' } = {}) {
   if (!id || !title || !prompt || !summary) throw new Phase2RuntimeContractError('Manual run requires id, title, prompt and summary.');
   assertOneOf(status, ['succeeded'], 'manual run status');
+  assertOneOf(agentId, PHASE2_AGENT_IDS, 'manual run agent id');
   return deepFreeze({
-    ...createMinimalRun({ id, title, projectId, agentId: 'agent-zero', skillId: 'orchestration-control', status, summary, createdAt, lastUpdated: createdAt }),
+    ...createMinimalRun({ id, title, projectId, agentId, skillId: 'orchestration-control', status, summary, createdAt, lastUpdated: createdAt }),
     type: 'manual',
-    action: 'ask-agent-zero-general-task',
+    action: `ask-${agentId}-general-task`,
     prompt: sanitizeText(prompt)
   });
 }

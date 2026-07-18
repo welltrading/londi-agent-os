@@ -169,3 +169,10 @@ Append-only log of significant project decisions.
 - **Reason:** Londi needs the operator UI to feel aesthetic, inviting, and professional while still preserving the local-first Runtime Dashboard boundaries.
 - **Scope:** CSS-only visual refinement in the runtime entrypoint and preview: stronger typography, atmospheric background, refined cards, metrics, toolbar, and a prominent chat composer.
 - **Guardrail:** No Local API, HostConnector, storage, adapter, Obsidian, polling, or execution behavior changes.
+
+## 2026-07-18 — Runtime Dashboard New Run adds per-conversation agent selector
+
+- **Decision:** Add an `Agent` selector to the `New Run` chat composer so each new manual conversation can target Agent Zero, Codex, Claude Code, or Hermes.
+- **Reason:** Londi expects the dashboard chat to behave like a normal chat where the responder can be chosen before sending a message.
+- **Scope:** Manual Run Console records now carry `agentId`, derive `action` as `ask-{agentId}-general-task`, and render the available Phase 2 agents in the composer. This remains a synthetic/manual run record only.
+- **Guardrail:** Selecting an agent does not execute Agent Zero, Codex, Claude Code, Hermes, subprocesses, Obsidian writes, merges, polling, or direct UI filesystem/CLI behavior.
