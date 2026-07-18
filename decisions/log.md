@@ -162,3 +162,10 @@ Append-only log of significant project decisions.
 - **Reason:** Londi expects the Run Console to feel like chat, not a manual database-entry form.
 - **Scope:** The visible UI now uses one message textarea and `Send`; title and summary are derived from the message while the saved backend object remains a synthetic manual run in `data/runs/runs.json`.
 - **Guardrail:** This remains manual/synthetic only; sending does not execute Agent Zero, Codex, Claude Code, Hermes, subprocesses, Obsidian writes, or auto-merge behavior.
+
+## 2026-07-18 — Runtime Dashboard adopts executive console visual direction
+
+- **Decision:** Style the Runtime Dashboard and `New Run` composer as a polished dark executive console instead of a raw technical form.
+- **Reason:** Londi needs the operator UI to feel aesthetic, inviting, and professional while still preserving the local-first Runtime Dashboard boundaries.
+- **Scope:** CSS-only visual refinement in the runtime entrypoint and preview: stronger typography, atmospheric background, refined cards, metrics, toolbar, and a prominent chat composer.
+- **Guardrail:** No Local API, HostConnector, storage, adapter, Obsidian, polling, or execution behavior changes.
