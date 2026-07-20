@@ -176,3 +176,67 @@ Append-only log of significant project decisions.
 - **Reason:** Londi expects the dashboard chat to behave like a normal chat where the responder can be chosen before sending a message.
 - **Scope:** Manual Run Console records now carry `agentId`, derive `action` as `ask-{agentId}-general-task`, and render the available Phase 2 agents in the composer. This remains a synthetic/manual run record only.
 - **Guardrail:** Selecting an agent does not execute Agent Zero, Codex, Claude Code, Hermes, subprocesses, Obsidian writes, merges, polling, or direct UI filesystem/CLI behavior.
+
+## 2026-07-20 — Londi Agent OS MVP execution spec locked as Target + Gap-to-current-repo
+
+- **Decision:** Use `specs/2026-07-20-londi-agent-os-execution-spec.md` as the ready-for-build Target Spec + Gap-to-current-repo for the Londi Agent OS MVP.
+- **Evidence:** Source product decisions come from `/a0/usr/workdir/brainstorms/2026-07-12-londi-agent-os.md`; spec-shaping decisions were captured in `/a0/usr/workdir/brainstorms/2026-07-19-londi-agent-os-execution-spec-grill.md`; the existing repo was scanned before writing the spec.
+- **Implication:** Build work should proceed slice-by-slice from the spec, treating the brainstorm as product source of truth and the current repo as implementation evidence only.
+- **Guardrail:** MVP scope remains Git-only, Claude Code + Codex active adapters only, no active Agent Zero/Hermes adapters, no automatic merge, `Accepted` is not final, and `Completed` requires verified manual merge.
+
+
+## 2026-07-20 — Adapter target contract names mapped to canonical implementation operations
+
+- **Decision:** Keep the current canonical adapter operation list in code and parity tests, and document the target-spec name mapping in `docs/adapter-contract.md` instead of renaming implementation methods now.
+- **Evidence:** `node tests/adapter-contract.test.mjs`, `node tests/adapter-contract-parity.test.mjs`, and `node scripts/check-adapter-contract-parity.mjs` passed with 100% parity for Claude Code and Codex.
+- **Implication:** Product/user-facing language may use `startRun`, `sendTask`, and `getArtifacts`, while the implementation continues to use `start`, `deliverTask`, and `collectArtifacts` internally.
+- **Guardrail:** If adapter operation names are exposed directly through a public API later, update the mapping, docs, adapter contract, and parity tests in the same slice.
+
+## 2026-07-20 — Plan & Build Gate B requires exact approved handoff revision
+
+- **Decision:** Treat the Build step in Plan & Build as blocked unless it receives the exact `handoff.md` revision approved by Gate B.
+- **Evidence:** `tests/plan-build-handoff-gate.test.mjs` verifies the `plan-build` template requires handoff, unapproved handoffs block Build, changed handoff content produces a new hash, stale Gate B decisions cannot approve changed content, and re-approval unblocks Build.
+- **Implication:** Handoff edits after approval invalidate the previous approval for Build execution.
+- **Guardrail:** Builder context must come from the approved handoff revision, not a free-form plan/chat transcript or stale decision.
+
+## 2026-07-20 — Review loop limited to two automatic correction cycles
+
+- **Decision:** Keep the Review loop policy at two automatic Build → Review correction cycles; a further failed attempt requires exception approval / Needs Attention, and Critical sensitive findings stop immediately for approval.
+- **Evidence:** `node tests/review-artifact.test.mjs`, `node tests/correction-cycle.test.mjs`, and `node tests/pipeline-integration-suite.test.mjs` verify review blocking, Critical sensitive approval, cycle counter limit, third-attempt exception requirement, and integrated Plan/Build/Review scenario coverage.
+- **Implication:** The orchestrator can retry normal High/Critical blocking review feedback automatically within the two-cycle cap, but cannot silently continue after exhaustion or Critical sensitive findings.
+- **Guardrail:** Critical sensitive findings and exhausted correction cycles must route to explicit human approval/attention before any further build correction.
+
+## 2026-07-20 — Preflight and Secret Broker security gates validated
+
+- **Decision:** Treat Slice 8 Preflight + permissions + Secret Broker as validated at the contract/test level for MVP skeleton evidence.
+- **Evidence:** `node tests/preflight-engine.test.mjs`, `node tests/secret-broker.test.mjs`, `node tests/redaction-quarantine.test.mjs`, `node tests/security-acceptance-suite.test.mjs`, `node tests/security-hardening.test.mjs`, `node tests/rest-contracts.test.mjs`, and `node tests/sse-stream.test.mjs` passed.
+- **Implication:** Preflight can classify Ready / Ready with Warnings / Blocked, only warnings are overrideable, secret usage is alias/grant scoped, and known secret material is redacted from API/SSE/audit/artifact-style surfaces in the tested contracts.
+- **Guardrail:** This is contract-level validation; live served API/runtime verification remains separate under Slice 9 and final acceptance.
+
+## 2026-07-20 — Runtime Local API and Dashboard live service validated
+
+- **Decision:** Treat Slice 9 REST + SSE + basic UI as validated for the MVP skeleton at live local-service level.
+- **Evidence:** Added `tests/runtime-live-service.test.mjs`; targeted checks passed: `node tests/runtime-live-service.test.mjs`, `node tests/rest-contracts.test.mjs`, `node tests/sse-stream.test.mjs`, `node tests/host-connector.test.mjs`, `node tests/ui-shell.test.mjs`, `node tests/phase2-dashboard.test.mjs`, and `npm run type-check`.
+- **Implication:** The repo now has proof beyond contract modules: a served Runtime Dashboard static UI, live Local API health and Phase 2 endpoints, HostConnector project browser/manual runs/Obsidian summary path, bearer auth/CORS/idempotency behavior, and UI boundary tests.
+- **Guardrail:** The live test uses deterministic local temp data and dev token behavior; it validates the Local API/UI/HostConnector boundary, not real Windows service installation or real browser interaction.
+
+## 2026-07-20 — Recovery requires explicit user decision after restart
+
+- **Decision:** Treat Slice 10 Recovery / heartbeat / checkpoints as validated for the MVP skeleton.
+- **Evidence:** Updated `tests/restart-recovery.test.mjs` and `docs/restart-recovery.md`; targeted checks passed: `node tests/restart-recovery.test.mjs`, `node tests/checkpoint-scheduler.test.mjs`, `node tests/process-manager.test.mjs`, `node tests/technical-retry.test.mjs`, and `npm run type-check`.
+- **Implication:** Service shutdown/restart moves active work to `Recovery Required` only after checkpoint + child-process closure guards pass. Recovery presents Resume / Replace / Stop choices and never silently dispatches adapter work.
+- **Guardrail:** Resume can transition back to Running only after explicit approval and verified checkpoint/external-effect guards; this is deterministic local recovery validation, not a real OS service restart drill.
+
+## 2026-07-20 — Audit export redaction and retention safety validated
+
+- **Decision:** Treat Slice 11 Audit / backup / retention as validated for the MVP skeleton.
+- **Evidence:** Updated `packages/orchestrator/src/event-store.js`, `tests/smoke.test.mjs`, and `docs/event-store-audit.md`; targeted checks passed: `node tests/smoke.test.mjs`, `node tests/retention-scheduler.test.mjs`, `node tests/backup-manager.test.mjs`, `node tests/restore-workflow.test.mjs`, `node tests/redaction-quarantine.test.mjs`, `node tests/audit-settings-maintenance.test.mjs`, and `npm run type-check`.
+- **Implication:** Retention starts only after `Completed`; `Accepted` is not cleanup-eligible; backup/restore contracts exclude secrets/code and verify integrity; Audit JSON/CSV export is serialized after Audit-surface redaction.
+- **Guardrail:** Validation uses deterministic local stores/files and known-secret inputs; it does not yet prove a production scheduler service or external backup destination.
+
+## 2026-07-20 — Five-run acceptance suite validates MVP skeleton
+
+- **Decision:** Treat Slice 12 Acceptance suite as validated for the MVP skeleton.
+- **Evidence:** Updated `packages/orchestrator/src/acceptance-runs.js`, `tests/acceptance-runs.test.mjs`, `packages/orchestrator/package.json`, `docs/acceptance-runs.md`, and `docs/current-repo-snapshot.md`; targeted checks passed: `node tests/acceptance-runs.test.mjs` and `npm run type-check`.
+- **Implication:** The acceptance report now proves five signed consecutive passing runs across both active adapters (`claude-code`, `codex`) and all MVP templates, using real temporary Git repositories, manual Gate F merge verification, secret/restart/audit coverage, and a controlled adapter process spawn/cancel boundary.
+- **Guardrail:** This is deterministic local harness validation using `process.execPath`; it proves adapter process supervision and contract flow, not live Claude/Codex LLM execution.
