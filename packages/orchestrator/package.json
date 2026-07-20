@@ -9,6 +9,7 @@
     "build": "node src/index.js --build-check"
   },
   "dependencies": {
+    "@londi-agent-os/adapters": "0.0.0-mvp",
     "@londi-agent-os/contracts": "0.0.0-mvp"
   }
 }

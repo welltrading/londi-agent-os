@@ -7,7 +7,7 @@ import {
   runFiveAcceptanceRuns
 } from '../packages/orchestrator/src/index.js';
 
-const report = runFiveAcceptanceRuns();
+const report = await runFiveAcceptanceRuns();
 assert.equal(report.runs.length, ACCEPTANCE_RUN_COUNT);
 assert.equal(report.signed, true);
 assert.equal(report.consecutive, true);
@@ -25,6 +25,11 @@ assert.equal(JSON.stringify(report).includes('secret-token-value'), false);
 for (const run of report.runs) {
   assert.equal(run.repository.realGitProject, true);
   assert.equal(run.gates.manualMerge, 'Verified');
+  assert.equal(run.adapterBoundary.processSpawned, true);
+  assert.equal(run.adapterBoundary.processCancelled, true);
+  assert.equal(run.adapterBoundary.health, 'success');
+  assert.equal(run.adapterBoundary.start, 'success');
+  assert.equal(run.adapterBoundary.cancel, 'cancelled');
   assert.equal(run.result, 'Passed');
 }
 assert.equal(assertAcceptanceRunsReport(report), true);

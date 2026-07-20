@@ -2,12 +2,14 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createClaudeCodeAdapter, createCodexAdapter } from '@londi-agent-os/adapters';
 import { runPipelineIntegrationScenario } from './pipeline-integration-suite.js';
 import { createInMemoryCredentialManager, issueSecretGrant, injectGrantedSecret } from './secret-broker.js';
 import { createApprovalRequest, decideApproval, hashApprovalPayload } from './approvals.js';
 import { createRecoveryConsistencyReport } from './restart-recovery.js';
 import { createManualMergeGate, verifyManualMerge } from './manual-merge.js';
 import { createInMemoryEventStore, appendEventAndAudit } from './event-store.js';
+import { createAttemptProcessManager } from './process-manager.js';
 
 export const ACCEPTANCE_RUN_COUNT = 5;
 export const ACCEPTANCE_REQUIRED_TEMPLATES = Object.freeze(['direct', 'plan-build', 'plan-build-review']);
@@ -22,7 +24,7 @@ export class AcceptanceRunsError extends Error {
   }
 }
 
-export function runFiveAcceptanceRuns({ now = '2026-01-01T00:00:00.000Z' } = {}) {
+export async function runFiveAcceptanceRuns({ now = '2026-01-01T00:00:00.000Z' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'londi-acceptance-runs-'));
   try {
     const definitions = [
@@ -32,7 +34,10 @@ export function runFiveAcceptanceRuns({ now = '2026-01-01T00:00:00.000Z' } = {})
       { runId: 'acceptance-4', templateId: 'direct', adapterId: 'codex' },
       { runId: 'acceptance-5', templateId: 'plan-build-review', adapterId: 'claude-code' }
     ];
-    const runs = definitions.map((definition, index) => executeAcceptanceRun({ ...definition, root, sequence: index + 1, now }));
+    const runs = [];
+    for (const [index, definition] of definitions.entries()) {
+      runs.push(await executeAcceptanceRun({ ...definition, root, sequence: index + 1, now }));
+    }
     const report = createAcceptanceRunsReport({ runs, signedBy: 'Londi Agent OS automated acceptance harness', signedAt: now });
     assertAcceptanceRunsReport(report);
     return report;
@@ -74,15 +79,16 @@ export function assertAcceptanceRunsReport(report) {
   return true;
 }
 
-function executeAcceptanceRun({ root, runId, sequence, templateId, adapterId, includeCorrection = false, includeCriticalStop = false, includesRestart = false, includesSecret = false, includesSensitiveApproval = false, now }) {
+async function executeAcceptanceRun({ root, runId, sequence, templateId, adapterId, includeCorrection = false, includeCriticalStop = false, includesRestart = false, includesSecret = false, includesSensitiveApproval = false, now }) {
   const repo = createRealGitProject({ root, runId });
   const scenario = runPipelineIntegrationScenario({ templateId, runId, includeCorrection, includeCriticalStop, artifactsRoot: join(repo, '.londi', 'artifacts') });
+  const adapterBoundary = await exerciseAdapterBoundary({ runId, adapterId, repo });
   const secret = includesSecret ? exerciseSecretGrant({ runId }) : null;
   const sensitiveApproval = includesSensitiveApproval ? approveSensitiveAction({ runId, now }) : null;
   const restart = includesRestart ? exerciseRestartRecovery({ runId, repo }) : null;
   const manualMerge = exerciseManualMerge({ runId, repo, snapshot: scenario.acceptanceSnapshot });
   const auditExport = exportRunAudit({ runId, templateId, adapterId, manualMerge });
-  const checks = [scenario.gates.acceptance.kind === 'acceptance', manualMerge.status === 'Verified', auditExport.exported === true];
+  const checks = [scenario.gates.acceptance.kind === 'acceptance', adapterBoundary.processSpawned === true, manualMerge.status === 'Verified', auditExport.exported === true];
   if (secret) checks.push(secret.injected === true && secret.auditRedacted === true);
   if (sensitiveApproval) checks.push(sensitiveApproval.state === 'Approved');
   if (restart) checks.push(restart.recoveredState === 'Recovery Required' && restart.autoResume === false);
@@ -93,6 +99,7 @@ function executeAcceptanceRun({ root, runId, sequence, templateId, adapterId, in
     adapterId,
     repository: { realGitProject: true, targetBranch: 'main', runBranch: `londi/${runId}`, targetCommit: manualMerge.targetCommit },
     gates: { acceptance: 'Approved', manualMerge: manualMerge.status },
+    adapterBoundary,
     features: {
       restart: Boolean(restart),
       secret: Boolean(secret),
@@ -102,6 +109,31 @@ function executeAcceptanceRun({ root, runId, sequence, templateId, adapterId, in
     },
     artifacts: { acceptanceSnapshotHash: scenario.acceptanceSnapshot.snapshotHash, auditFormat: auditExport.format },
     result: checks.every(Boolean) ? 'Passed' : 'Failed'
+  };
+}
+
+async function exerciseAdapterBoundary({ runId, adapterId, repo }) {
+  const processManager = createAttemptProcessManager();
+  const runCommand = (command, args) => ({ status: 0, stdout: `${command} ${args.join(' ')} ok`, stderr: '' });
+  const adapter = adapterId === 'claude-code'
+    ? createClaudeCodeAdapter({ version: 'acceptance-harness', processManager, runCommand, command: process.execPath })
+    : createCodexAdapter({ version: 'acceptance-harness', processManager, runCommand, command: process.execPath });
+  const health = await adapter.health();
+  const capabilities = await adapter.capabilities();
+  const start = await adapter.start({ attemptId: `${runId}-adapter-start`, cwd: repo, args: ['-e', 'setTimeout(() => {}, 1000)'] });
+  const heartbeat = await adapter.heartbeat({ attemptId: `${runId}-adapter-start` });
+  const cancel = await adapter.cancel({ attemptId: `${runId}-adapter-start` });
+  const events = processManager.getEvents();
+  return {
+    adapterId,
+    contractVersion: adapter.descriptor.contractVersion,
+    health: health.outcome,
+    capabilities: capabilities.outcome,
+    start: start.outcome,
+    heartbeat: heartbeat.outcome,
+    cancel: cancel.outcome,
+    processSpawned: events.some((event) => event.type === 'process.start'),
+    processCancelled: events.some((event) => event.type === 'process.cancelled')
   };
 }
 
