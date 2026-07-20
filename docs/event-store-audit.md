@@ -22,4 +22,4 @@ Runtime source of truth:
 
 ## Export readiness
 
-The in-memory store already supports JSON and CSV export shapes so future REST endpoints can expose run-scoped Audit export without changing the domain contract.
+The in-memory store supports JSON and CSV export shapes so REST endpoints can expose run-scoped Audit export without changing the domain contract. Export applies Audit-surface redaction before serialization; `metadataRedacted` is included in CSV only after redaction.

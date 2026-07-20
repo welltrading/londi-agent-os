@@ -25,6 +25,7 @@ import {
   assertFreshRevision,
   appendEventAndAudit,
   compareEventOrder,
+  redactAuditEntries,
   createApprovalRequest,
   createInMemoryEventStore,
   decideApproval,
@@ -251,10 +252,22 @@ assert.equal(secondAuditPair.event.eventId, 2);
 assert.equal(compareEventOrder(firstAuditPair.event, secondAuditPair.event) < 0, true);
 assert.deepEqual(eventStore.listEvents({ afterEventId: 1 }).map((event) => event.eventId), [2]);
 assert.equal(eventStore.listAudit({ runId: 'run-event-1' }).length, 2);
-assert.equal(eventStore.exportAudit({ runId: 'run-event-1', format: 'json' }).includes('audit-event-1'), true);
-const auditCsv = eventStore.exportAudit({ runId: 'run-event-1', format: 'csv' });
-assert.equal(auditCsv.split('\n')[0], 'id,eventId,actor,action,target,result,runId,stepId,createdAt');
+const auditSecret = 'audit-secret-value-12345';
+const secretAuditPair = appendEventAndAudit(eventStore, {
+  event: { type: 'run.secret.checked', runId: 'run-event-1', severity: 'warning', payloadRedacted: { status: 'redacted' }, timestamp: '2026-01-01T00:11:00.000Z' },
+  audit: { id: 'audit-event-secret', actor: 'system', action: 'secret-check', target: 'run-event-1', result: 'ok', metadataRedacted: { token: auditSecret, note: `Bearer abcdefghijklmnopqrstuvwxyz` }, createdAt: '2026-01-01T00:11:00.000Z' }
+});
+assert.equal(secretAuditPair.audit.metadataRedacted.token, auditSecret);
+assert.equal(redactAuditEntries(eventStore.listAudit({ runId: 'run-event-1' }), { knownSecrets: [auditSecret] }).some((entry) => JSON.stringify(entry).includes(auditSecret)), false);
+const auditJson = eventStore.exportAudit({ runId: 'run-event-1', format: 'json', knownSecrets: [auditSecret] });
+assert.equal(auditJson.includes('audit-event-1'), true);
+assert.equal(auditJson.includes(auditSecret), false);
+assert.equal(auditJson.includes('abcdefghijklmnopqrstuvwxyz'), false);
+const auditCsv = eventStore.exportAudit({ runId: 'run-event-1', format: 'csv', knownSecrets: [auditSecret] });
+assert.equal(auditCsv.split('\n')[0], 'id,eventId,actor,action,target,result,runId,stepId,metadataRedacted,createdAt');
 assert.equal(auditCsv.includes('audit-event-2'), true);
+assert.equal(auditCsv.includes(auditSecret), false);
+assert.equal(auditCsv.includes('abcdefghijklmnopqrstuvwxyz'), false);
 assert.throws(() => eventStore.deleteAudit('audit-event-1'), AuditAppendOnlyError);
 assert.throws(() => eventStore.updateAudit('audit-event-1', { result: 'edited' }), AuditAppendOnlyError);
 assert.throws(

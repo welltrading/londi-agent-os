@@ -1,3 +1,5 @@
+import { redactSurface } from './redaction-quarantine.js';
+
 export class EventStoreError extends Error {
   constructor(message, code = 'ERR_EVENT_STORE', details = {}) {
     super(message);
@@ -40,8 +42,8 @@ export function createInMemoryEventStore() {
         .filter((entry) => runId === undefined || entry.runId === runId)
         .map((item) => structuredClone(item));
     },
-    exportAudit({ runId, format = 'json' } = {}) {
-      const entries = this.listAudit({ runId });
+    exportAudit({ runId, format = 'json', knownSecrets = [] } = {}) {
+      const entries = redactAuditEntries(this.listAudit({ runId }), { knownSecrets });
       if (format === 'json') return JSON.stringify(entries, null, 2);
       if (format === 'csv') return toAuditCsv(entries);
       throw new EventStoreError('Unsupported audit export format.', 'ERR_AUDIT_EXPORT_FORMAT', { format });
@@ -66,9 +68,14 @@ export function compareEventOrder(left, right) {
 }
 
 export function toAuditCsv(entries) {
-  const header = ['id', 'eventId', 'actor', 'action', 'target', 'result', 'runId', 'stepId', 'createdAt'];
-  const rows = entries.map((entry) => header.map((key) => csvCell(entry[key] ?? '')).join(','));
+  const header = ['id', 'eventId', 'actor', 'action', 'target', 'result', 'runId', 'stepId', 'metadataRedacted', 'createdAt'];
+  const rows = entries.map((entry) => header.map((key) => csvCell(key === 'metadataRedacted' ? JSON.stringify(entry.metadataRedacted ?? {}) : entry[key] ?? '')).join(','));
   return [header.join(','), ...rows].join('\n');
+}
+
+export function redactAuditEntries(entries = [], { knownSecrets = [] } = {}) {
+  if (!Array.isArray(entries)) throw new EventStoreError('Audit entries must be an array.', 'ERR_AUDIT_REDACTION_ENTRIES');
+  return entries.map((entry) => redactSurface({ surface: 'audit', payload: entry, knownSecrets }).payload);
 }
 
 function normalizeEvent(event = {}, eventId) {

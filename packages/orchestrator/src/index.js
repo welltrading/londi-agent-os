@@ -424,7 +424,8 @@ export {
   createInMemoryEventStore,
   appendEventAndAudit,
   compareEventOrder,
-  toAuditCsv
+  toAuditCsv,
+  redactAuditEntries
 } from './event-store.js';
 export {
   WorkspaceValidationError,
