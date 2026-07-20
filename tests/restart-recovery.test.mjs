@@ -41,6 +41,21 @@ try {
   assert.equal(report.actions.Resume.enabled, true);
   assert.equal(assertRecoveryActionAvailable(report, 'Resume'), true);
 
+  const serviceRestartTransition = await import('../packages/orchestrator/src/index.js').then(({ applyRunTransition, assertRunTransition, StateTransitionError }) => {
+    const transition = applyRunTransition('Running', 'Service shutdown', { checkpointSaved: true, childProcessesClosed: true });
+    assert.equal(transition.to, 'Recovery Required');
+    assert.equal(assertRunTransition('Recovery Required', 'Resume approved', { checkpointValid: true, externalEffectsVerified: true }), 'Running');
+    assert.throws(() => assertRunTransition('Running', 'Service shutdown', { checkpointSaved: false, childProcessesClosed: true }), StateTransitionError);
+    assert.throws(() => assertRunTransition('Recovery Required', 'Resume approved', { checkpointValid: true, externalEffectsVerified: false }), StateTransitionError);
+    return transition;
+  });
+  assert.deepEqual(serviceRestartTransition, {
+    from: 'Running',
+    event: 'Service shutdown',
+    to: 'Recovery Required',
+    guard: 'checkpoint saved and child processes closed'
+  });
+
   const withLiveProcess = createRecoveryConsistencyReport({
     run: { runId: 'run-recovery', state: 'Running' },
     checkpoint: { id: 'chk-1', safeToResume: true, sequence: 1, path: checkpointRecord.path },
