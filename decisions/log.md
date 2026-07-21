@@ -240,3 +240,10 @@ Append-only log of significant project decisions.
 - **Evidence:** Updated `packages/orchestrator/src/acceptance-runs.js`, `tests/acceptance-runs.test.mjs`, `packages/orchestrator/package.json`, `docs/acceptance-runs.md`, and `docs/current-repo-snapshot.md`; targeted checks passed: `node tests/acceptance-runs.test.mjs` and `npm run type-check`.
 - **Implication:** The acceptance report now proves five signed consecutive passing runs across both active adapters (`claude-code`, `codex`) and all MVP templates, using real temporary Git repositories, manual Gate F merge verification, secret/restart/audit coverage, and a controlled adapter process spawn/cancel boundary.
 - **Guardrail:** This is deterministic local harness validation using `process.execPath`; it proves adapter process supervision and contract flow, not live Claude/Codex LLM execution.
+
+## 2026-07-21 — MVP skeleton pushed to GitHub
+
+- **Decision:** Treat `welltrading/londi-agent-os` on GitHub as the canonical remote for the MVP skeleton validation baseline.
+- **Evidence:** Windows-side push succeeded for `master` and tag `mvp-skeleton-validation-2026-07-20`; remote verification returned `refs/heads/master` at `0424f3d0dcc7d6e6efea76d60ed7dff427d8b6b5` and `refs/tags/mvp-skeleton-validation-2026-07-20` at `609d4c4f60a9564e189c3e42588ee51109436813`.
+- **Implication:** The deterministic MVP skeleton validation state is now available from GitHub, not only from the local bundle/archive artifacts.
+- **Guardrail:** Live Claude/Codex LLM execution remains unproven; next validation should be a live adapter smoke run outside the deterministic CI harness.
