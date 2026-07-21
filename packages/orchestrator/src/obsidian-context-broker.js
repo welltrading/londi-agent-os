@@ -154,12 +154,18 @@ function tokenize(query) {
   return [...new Set(query.toLowerCase().split(/[^\p{L}\p{N}_-]+/u).filter((term) => term.length >= 2))];
 }
 
-function isRecent(candidate) {
-  const maxAgeMs = candidate.maxAgeDays * 24 * 60 * 60 * 1000;
-  return Date.now() - candidate.modifiedAt.getTime() <= maxAgeMs;
+function isRecent(mtime, nowIso, days) {
+  const now = new Date(nowIso).getTime();
+  return Number.isFinite(now) && now - mtime.getTime() <= days * 24 * 60 * 60 * 1000;
 }
 
 function isInsideRoot(candidateRealPath, rootRealPath) {
   const rel = relative(rootRealPath, candidateRealPath);
   return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/') && !rel.startsWith('\\') && rel !== '..');
+}
+
+function deepFreezeContext(value) {
+  if (!value || typeof value !== 'object') return value;
+  for (const child of Object.values(value)) deepFreezeContext(child);
+  return Object.freeze(value);
 }
