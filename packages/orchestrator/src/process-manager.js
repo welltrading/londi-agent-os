@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 export class ProcessControlError extends Error {
   constructor(message, details = {}) {
@@ -121,7 +121,9 @@ function killProcessTree(pid, signal) {
   if (!pid) return;
   try {
     if (process.platform === 'win32') {
-      spawn('taskkill', ['/PID', String(pid), '/T', signal === 'SIGKILL' ? '/F' : ''], { stdio: 'ignore' });
+      const args = ['/PID', String(pid), '/T'];
+      if (signal === 'SIGKILL') args.push('/F');
+      spawnSync('taskkill', args, { stdio: 'ignore' });
     } else {
       process.kill(-pid, signal);
     }
