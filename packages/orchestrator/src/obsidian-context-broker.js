@@ -168,3 +168,4 @@ function deepFreezeContext(value) {
   for (const child of Object.values(value)) deepFreezeContext(child);
   return Object.freeze(value);
 }
+
