@@ -117,9 +117,9 @@ export function assertWorkspaceWriteAllowed({ policy, targetPath } = {}) {
   assertSafeTargetPath(targetPath);
   const resolvedTarget = resolve(targetPath);
   const physicalTarget = resolvePhysicalTarget(resolvedTarget);
-  const deniedRoot = policy.deniedWriteRoots.find((root) => isPathInside(resolvedTarget, root) || isPathInside(physicalTarget, root));
+  const deniedRoot = policy.deniedWriteRoots.find((root) => pathMatchesRootVariants({ resolvedTarget, physicalTarget, root }));
   if (deniedRoot) throw new WorkspaceIsolationError('Write target is denied by isolation policy.', { targetPath: resolvedTarget, physicalTarget, deniedRoot });
-  const allowedRoot = policy.allowedWriteRoots.find((root) => isPathInside(resolvedTarget, root) && isPathInside(physicalTarget, root));
+  const allowedRoot = policy.allowedWriteRoots.find((root) => pathMatchesRootVariants({ resolvedTarget, physicalTarget, root, requireBothTargets: true }));
   if (!allowedRoot) throw new WorkspaceIsolationError('Write target is outside run worktree/artifacts.', { targetPath: resolvedTarget, physicalTarget, allowedRoots: policy.allowedWriteRoots });
   return { allowed: true, targetPath: resolvedTarget, physicalTarget, allowedRoot };
 }
@@ -127,6 +127,18 @@ export function assertWorkspaceWriteAllowed({ policy, targetPath } = {}) {
 export function simulateWorkspaceWrite({ policy, targetPath } = {}) {
   const decision = assertWorkspaceWriteAllowed({ policy, targetPath });
   return Object.freeze({ ...decision, serviceAccount: policy.serviceAccount });
+}
+
+function pathMatchesRootVariants({ resolvedTarget, physicalTarget, root, requireBothTargets = false } = {}) {
+  const resolvedRoot = resolve(root);
+  const physicalRoot = resolvePhysicalTarget(resolvedRoot);
+  const targetMatches = isPathInsideAnyRoot(resolvedTarget, [resolvedRoot, physicalRoot]);
+  const physicalMatches = isPathInsideAnyRoot(physicalTarget, [resolvedRoot, physicalRoot]);
+  return requireBothTargets ? targetMatches && physicalMatches : targetMatches || physicalMatches;
+}
+
+function isPathInsideAnyRoot(targetPath, rootPaths) {
+  return rootPaths.some((rootPath) => isPathInside(targetPath, rootPath));
 }
 
 function isPathInside(targetPath, rootPath) {
