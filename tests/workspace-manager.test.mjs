@@ -105,12 +105,12 @@ try {
     () => assertWorkspaceWriteAllowed({ policy: isolationPolicy, targetPath: `${manifest.worktreePath}/bad\nname.txt` }),
     WorkspaceIsolationError
   );
-  symlinkSync(vaultRoot, join(manifest.worktreePath, 'vault-link'), 'dir');
+symlinkSync(vaultRoot, join(manifest.worktreePath, 'vault-link'), directorySymlinkType());
   assert.throws(
     () => assertWorkspaceWriteAllowed({ policy: isolationPolicy, targetPath: join(manifest.worktreePath, 'vault-link', 'escape.md') }),
     WorkspaceIsolationError
   );
-  symlinkSync(otherWorktree, join(manifest.worktreePath, 'other-worktree-link'), 'dir');
+symlinkSync(otherWorktree, join(manifest.worktreePath, 'other-worktree-link'), directorySymlinkType());
   assert.throws(
     () => simulateWorkspaceWrite({ policy: isolationPolicy, targetPath: join(manifest.worktreePath, 'other-worktree-link', 'escape.txt') }),
     WorkspaceIsolationError
@@ -163,6 +163,9 @@ try {
   console.log('Workspace manager tests OK');
 } finally {
   rmSync(root, { recursive: true, force: true });
+}
+function directorySymlinkType() {
+  return process.platform === 'win32' ? 'junction' : 'dir';
 }
 
 function git(cwd, args) {
