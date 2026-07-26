@@ -8,7 +8,7 @@ The adapter package now includes a local Codex CLI implementation of the E3-T01 
 
 ## Health/auth/version
 
-Health runs local CLI checks for `codex --version` and `codex auth status`. The adapter reports success only when both checks exit with status `0`.
+Health runs `codex --version` and first tries the legacy `codex auth status`. If that command is unsupported by the installed CLI, it falls back to `codex login status`. The adapter reports success only when the version check and the applicable authentication check exit with status `0`.
 
 ## Process control
 

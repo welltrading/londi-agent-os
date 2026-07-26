@@ -247,3 +247,10 @@ Append-only log of significant project decisions.
 - **Evidence:** Windows-side push succeeded for `master` and tag `mvp-skeleton-validation-2026-07-20`; remote verification returned `refs/heads/master` at `0424f3d0dcc7d6e6efea76d60ed7dff427d8b6b5` and `refs/tags/mvp-skeleton-validation-2026-07-20` at `609d4c4f60a9564e189c3e42588ee51109436813`.
 - **Implication:** The deterministic MVP skeleton validation state is now available from GitHub, not only from the local bundle/archive artifacts.
 - **Guardrail:** Live Claude/Codex LLM execution remains unproven; next validation should be a live adapter smoke run outside the deterministic CI harness.
+
+## 2026-07-22 — Manual Run status must reflect Direct pipeline execution
+
+- **Decision:** Persist every new manual run as `queued` first. When a HostConnector execution bridge exists, transition it through `running` and persist the real Direct pipeline result; a record write alone can never produce `succeeded`.
+- **Evidence:** The Local API now awaits HostConnector execution, and targeted tests cover no-executor `queued`, executor `running`/`succeeded`/`failed`, Direct fast success/failure, and current Codex login-status fallback.
+- **Implication:** The default bridge executes only Codex or Claude Code against a registered Git project in an isolated run branch/worktree, with Gate A approved internally for this MVP and execution metadata stored on the run.
+- **Guardrail:** No Agent Zero/Hermes active adapter, no Obsidian write-back, no automatic merge, and no secret values in execution metadata.

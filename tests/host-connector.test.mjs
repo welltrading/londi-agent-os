@@ -61,11 +61,11 @@ try {
   assert.equal(note.includes('- Project ID: client-ai-os'), true);
   assert.equal(note.includes('Project run summary was created.'), true);
 
-  const manualRun = connector.createManualRun({ title: 'Manual run', prompt: 'Ask Agent Zero to summarize this.', summary: 'Manual summary.', agentId: 'claude-code' });
+  const manualRun = await connector.createManualRun({ title: 'Manual run', prompt: 'Ask Agent Zero to summarize this.', summary: 'Manual summary.', agentId: 'claude-code' });
   assert.equal(manualRun.type, 'manual');
   assert.equal(manualRun.agentId, 'claude-code');
   assert.equal(manualRun.action, 'ask-claude-code-general-task');
-  assert.equal(manualRun.status, 'succeeded');
+  assert.equal(manualRun.status, 'queued');
   assert.equal(connector.listRuns()[0].id, manualRun.id);
   const persistedRuns = JSON.parse(readFileSync(join(temp, 'runs', 'runs.json'), 'utf8')).runs;
   assert.equal(persistedRuns[0].prompt, 'Ask Agent Zero to summarize this.');
@@ -79,6 +79,43 @@ try {
     relativePath: relative
   });
   assert.equal(hydratedConnector.listRuns()[0].summary, 'Manual summary.');
+
+  const successfulConnector = createInMemoryHostConnector({
+    now,
+    executeManualRun: async ({ run, input, project: selectedProject }) => ({
+      status: 'succeeded',
+      summary: `${run.summary} Executed.`,
+      artifactPath: '/artifacts/result.txt',
+      execution: { pipeline: 'direct', agentId: run.agentId, projectId: selectedProject.id, inputAgentId: input.agentId }
+    }),
+    projects: [project]
+  });
+  const successfulRun = await successfulConnector.createManualRun({ id: 'run-success', title: 'Success', prompt: 'Execute.', summary: 'Started.', agentId: 'codex', projectId: project.id });
+  assert.equal(successfulRun.status, 'succeeded');
+  assert.equal(successfulRun.summary, 'Started. Executed.');
+  assert.equal(successfulRun.execution.pipeline, 'direct');
+
+  const runningConnector = createInMemoryHostConnector({ executeManualRun: async () => ({ status: 'running', execution: { pipeline: 'direct', attempts: { execute: { status: 'Running' } } } }) });
+  const runningRun = await runningConnector.createManualRun({ id: 'run-running', title: 'Running', prompt: 'Execute.', summary: 'Started.', agentId: 'codex' });
+  assert.equal(runningRun.status, 'running');
+
+  const refreshableExecutor = async () => ({ status: 'running', execution: { pipeline: 'direct', attempts: { execute: { attemptId: 'attempt-refresh', status: 'Running' } } } });
+  refreshableExecutor.refreshRun = async ({ run: storedRun }) => ({
+    status: 'succeeded',
+    execution: { ...storedRun.execution, attempts: { execute: { attemptId: 'attempt-refresh', status: 'Exited', exitCode: 0 } } }
+  });
+  const refreshableConnector = createInMemoryHostConnector({ executeManualRun: refreshableExecutor });
+  const refreshableRun = await refreshableConnector.createManualRun({ id: 'run-refresh-success', title: 'Refresh success', prompt: 'Execute.', summary: 'Started.', agentId: 'codex' });
+  assert.equal(refreshableRun.status, 'running');
+  const refreshedRuns = await refreshableConnector.refreshRuns();
+  assert.equal(refreshedRuns[0].status, 'succeeded');
+  assert.equal(refreshedRuns[0].execution.attempts.execute.exitCode, 0);
+
+  const failedConnector = createInMemoryHostConnector({ executeManualRun: async () => { throw Object.assign(new Error('adapter delivery failed'), { code: 'ERR_DELIVERY', details: { execution: { pipeline: 'direct' } } }); } });
+  const failedRun = await failedConnector.createManualRun({ id: 'run-failed', title: 'Failed', prompt: 'Execute.', summary: 'Started.', agentId: 'codex' });
+  assert.equal(failedRun.status, 'failed');
+  assert.equal(failedRun.error, 'adapter delivery failed');
+  assert.equal(failedRun.execution.error.code, 'ERR_DELIVERY');
 
   const broken = createInMemoryHostConnector({ vaultPath: join(temp, 'vault') });
   assert.throws(() => broken.writeRunSummary({ runId: 'run-1', title: 'x', summary: 'x' }), HostConnectorError);
@@ -134,6 +171,7 @@ try {
   assert.equal(manualRunPayload.data.type, 'manual');
   assert.equal(manualRunPayload.data.agentId, 'codex');
   assert.equal(manualRunPayload.data.action, 'ask-codex-general-task');
+  assert.equal(manualRunPayload.data.status, 'queued');
   assert.equal(existsSync(join(temp, 'api-runs', 'runs.json')), true);
   const listRunsFilled = await fetch('http://127.0.0.1:3213/api/v1/runs', { headers });
   assert.equal((await listRunsFilled.json()).data[0].title, 'Live manual run');

@@ -9,6 +9,7 @@ export function createCodexAdapter({
   version = 'unknown',
   processManager,
   runCommand = defaultRunCommand,
+  resolveInvocation = defaultResolveCodexInvocation,
   redact = sanitizeAdapterText
 } = {}) {
   const descriptor = createAdapterDescriptor({
@@ -23,8 +24,11 @@ export function createCodexAdapter({
     descriptor,
 
     async health() {
-      const versionCheck = runCommand(command, ['--version']);
-      const authCheck = runCommand(command, ['auth', 'status']);
+      const versionCheck = runCommand(command, ['--version'], resolveInvocation);
+      const legacyAuthCheck = runCommand(command, ['auth', 'status'], resolveInvocation);
+      const authCheck = legacyAuthCheck.status !== 0 && isUnsupportedAuthStatusCommand(legacyAuthCheck)
+        ? runCommand(command, ['login', 'status'], resolveInvocation)
+        : legacyAuthCheck;
       const ok = versionCheck.status === 0 && authCheck.status === 0;
       return normalizeAdapterResult({
         operation: 'health',
@@ -57,7 +61,8 @@ export function createCodexAdapter({
     async start({ attemptId, cwd, env = {}, args = [] } = {}) {
       if (!processManager) return adapterTerminalFailure('start', 'Process manager is required for Codex start.', 'CODEX_PROCESS_MANAGER_REQUIRED');
       try {
-        const attempt = processManager.startAttempt({ attemptId, command, args, cwd, env });
+        const invocation = resolveInvocation(command, args);
+        const attempt = processManager.startAttempt({ attemptId, command: invocation.command, args: invocation.args, cwd, env, spawnOptions: invocation.spawnOptions ?? {} });
         return normalizeAdapterResult({ operation: 'start', outcome: 'success', data: { attempt: snapshotAttempt(attempt) } });
       } catch (error) {
         return adapterTerminalFailure('start', error.message, error.code, error);
@@ -68,7 +73,8 @@ export function createCodexAdapter({
       if (!processManager) return adapterTerminalFailure('deliverTask', 'Process manager is required for Codex task delivery.', 'CODEX_PROCESS_MANAGER_REQUIRED');
       if (!prompt) return adapterTerminalFailure('deliverTask', 'Prompt is required for Codex task delivery.', 'CODEX_PROMPT_REQUIRED');
       try {
-        const attempt = processManager.startAttempt({ attemptId, command, args: [...args, 'exec', prompt], cwd, env });
+        const invocation = resolveInvocation(command, [...args, 'exec', prompt]);
+        const attempt = processManager.startAttempt({ attemptId, command: invocation.command, args: invocation.args, cwd, env, spawnOptions: invocation.spawnOptions ?? {} });
         return normalizeAdapterResult({ operation: 'deliverTask', outcome: 'success', data: { attempt: snapshotAttempt(attempt) } });
       } catch (error) {
         return adapterTerminalFailure('deliverTask', error.message, error.code, error);
@@ -125,10 +131,29 @@ function adapterTerminalFailure(operation, message, code, error = null) {
   return normalizeAdapterResult({ operation, outcome: 'terminal_failure', error: { message, code: code ?? 'CODEX_ADAPTER_FAILURE', detail: error?.details ?? null } });
 }
 
-function defaultRunCommand(command, args) {
-  return spawnSync(command, args, { encoding: 'utf8' });
+function defaultRunCommand(command, args, resolveInvocation = defaultResolveCodexInvocation) {
+  const invocation = resolveInvocation(command, args);
+  return spawnSync(invocation.command, invocation.args, { encoding: 'utf8', ...(invocation.spawnOptions ?? {}) });
+}
+
+function defaultResolveCodexInvocation(command, args = []) {
+  if (process.platform !== 'win32' || command !== DEFAULT_CODEX_COMMAND) return { command, args };
+  const appData = process.env.APPDATA;
+  const codexPs1 = appData ? `${appData}\\npm\\codex.ps1` : null;
+  if (codexPs1) {
+    return { command: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', codexPs1, ...args] };
+  }
+  return { command, args, spawnOptions: { shell: true } };
 }
 
 function firstNonZero(...codes) {
   return codes.find((code) => code && code !== 0) ?? 1;
 }
+
+function isUnsupportedAuthStatusCommand(result = {}) {
+  const output = `${result.stderr ?? ''}\n${result.stdout ?? ''}`;
+  return /(?:unrecognized|unknown|unsupported|invalid)\s+(?:subcommand|command|argument)[\s\S]*\b(?:auth|status)\b|\b(?:auth|status)\b[\s\S]*(?:unrecognized|unknown|unsupported|invalid)/i.test(output);
+}
+
+
+

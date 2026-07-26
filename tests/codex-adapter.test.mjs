@@ -25,8 +25,11 @@ function createFakeProcessManager() {
 }
 
 const commandCalls = [];
+const identityInvocation = (command, args) => ({ command, args });
+
 const adapter = createCodexAdapter({
   version: '0.2.0',
+  resolveInvocation: identityInvocation,
   processManager: createFakeProcessManager(),
   runCommand(command, args) {
     commandCalls.push({ command, args });
@@ -45,6 +48,21 @@ assert.equal(health.data.healthy, true);
 assert.equal(health.data.stdout.includes('secret-token-value'), false);
 assert.equal(health.data.stdout.includes('Bearer abc'), false);
 assert.equal(commandCalls.length, 2);
+
+const fallbackCalls = [];
+const fallbackHealth = await createCodexAdapter({
+  resolveInvocation: identityInvocation,
+  processManager: createFakeProcessManager(),
+  runCommand(command, args) {
+    fallbackCalls.push(args.join(' '));
+    if (args.join(' ') === '--version') return { status: 0, stdout: 'codex current', stderr: '' };
+    if (args.join(' ') === 'auth status') return { status: 2, stdout: '', stderr: "error: unrecognized subcommand 'auth'" };
+    if (args.join(' ') === 'login status') return { status: 0, stdout: 'Logged in', stderr: '' };
+    return { status: 1, stdout: '', stderr: 'unexpected' };
+  }
+}).health();
+assert.equal(fallbackHealth.outcome, 'success');
+assert.deepEqual(fallbackCalls, ['--version', 'auth status', 'login status']);
 
 const capabilities = await adapter.capabilities();
 assert.equal(capabilities.data.capabilities.includes('debugging'), true);
@@ -80,6 +98,7 @@ assert.equal(collect.outcome, 'success');
 assert.equal(collect.artifacts[0].kind, 'patch');
 
 const badHealth = await createCodexAdapter({
+  resolveInvocation: identityInvocation,
   processManager: createFakeProcessManager(),
   runCommand(command, args) {
     if (args.join(' ') === '--version') return { status: 0, stdout: 'codex 0.2.0', stderr: '' };
@@ -94,3 +113,5 @@ assert.equal(noManager.outcome, 'terminal_failure');
 assert.equal(sanitizeAdapterText('Bearer verylongtokenabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ').includes('verylongtoken'), false);
 
 console.log('Codex adapter tests OK');
+
+

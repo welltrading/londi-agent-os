@@ -9,7 +9,7 @@ import {
   loadDefaultLocalConfig,
   validateLocalConfig
 } from '@londi-agent-os/contracts';
-import { ensureApprovedDataDirectories } from '@londi-agent-os/orchestrator';
+import { createDirectManualRunExecutor, ensureApprovedDataDirectories } from '@londi-agent-os/orchestrator';
 import { createInMemoryHostConnector } from './host-connector.js';
 
 export const SERVICE_NAME = 'LondiAgentOSLocalApi';
@@ -31,7 +31,8 @@ export function createServiceLifecycle(options = {}) {
     relativePath: relative,
     readDir: readdirSync,
     stat: statSync,
-    runsFilePath: config.paths.runs ? join(config.paths.runs, 'runs.json') : 'data/runs/runs.json'
+    runsFilePath: config.paths.runs ? join(config.paths.runs, 'runs.json') : 'data/runs/runs.json',
+    executeManualRun: options.executeManualRun ?? createDirectManualRunExecutor({ dataRoot: config.dataRoot })
   });
 
   let server;
@@ -109,6 +110,7 @@ export function createServiceLifecycle(options = {}) {
         return;
       }
       if (request.method === 'GET' && pathname === `${API_BASE_PATH}/runs`) {
+        if (typeof hostConnector.refreshRuns === 'function') await hostConnector.refreshRuns();
         const data = hostConnector.listRuns();
         writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('runs', data), page: { limit: 50, total: data.length } });
         return;
@@ -116,7 +118,7 @@ export function createServiceLifecycle(options = {}) {
       if (request.method === 'POST' && pathname === `${API_BASE_PATH}/runs`) {
         requireIdempotency(request);
         const body = await readJsonBody(request);
-        const data = hostConnector.createManualRun(body);
+        const data = await hostConnector.createManualRun(body);
         writeResource(response, { requestId, data, resourceVersion: phase2ResourceVersion('run', data), statusCode: 201 });
         return;
       }
@@ -237,3 +239,4 @@ function phase2ResourceVersion(prefix, data) {
   const stamp = Array.isArray(data) ? data.map((item) => item.lastUpdated ?? item.updatedAt ?? item.id).join('|') : data?.lastUpdated ?? data?.updatedAt ?? data?.id ?? 'v1';
   return `${prefix}-${size}-${Buffer.from(String(stamp)).toString('base64url').slice(0, 16)}`;
 }
+

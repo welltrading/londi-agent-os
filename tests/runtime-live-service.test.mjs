@@ -83,6 +83,8 @@ try {
   assert.equal(manual.statusCode, 201);
   assert.equal(manual.data.agentId, 'claude-code');
   assert.equal(manual.data.action, 'ask-claude-code-general-task');
+  assert.equal(manual.data.status, 'failed', 'default Direct bridge must not report success without an explicitly selected project');
+  assert.equal(manual.data.execution.pipeline, 'direct');
   const runs = await getJson('/runs', apiHeaders);
   assert.equal(runs.data[0].title, 'Runtime live manual run');
 

@@ -25,7 +25,9 @@ The following endpoints are routed by the Local API service in the Phase 2 slice
 | GET | `/api/v1/projects` | Paginated ProjectWorkspace list. |
 | GET | `/api/v1/projects/{projectId}/browser` | Paginated read-only Project Browser snapshot for an explicitly registered project path. Supports optional `path` query constrained inside the project root. |
 | GET | `/api/v1/runs` | Paginated manual/minimal run list from HostConnector storage. |
-| POST | `/api/v1/runs` | Requires `Idempotency-Key`; creates a manual selected-agent `/ General task` run in `data/runs/runs.json`; optional `agentId` defaults to `agent-zero`. |
+| POST | `/api/v1/runs` | Requires `Idempotency-Key`; persists a `queued` manual selected-agent `/ General task` run, then awaits the configured Direct execution bridge. The returned record reflects `running`, `succeeded`, or `failed`; without a bridge it remains `queued`. Optional `agentId` defaults to `agent-zero`. |
 | PUT | `/api/v1/projects/{projectId}` | Requires `Idempotency-Key`; upserts project context. |
 | GET | `/api/v1/obsidian/status` | Optional `refresh=true`; returns HostConnector vault availability. |
 | POST | `/api/v1/runs/obsidian-summary` | Requires `Idempotency-Key`; writes a Run Summary through HostConnector. |
+
+The default Local API execution bridge supports Codex and Claude Code only. It requires a registered Git project root (via `projectId`) and a valid target branch (default `main`), creates an isolated run branch/worktree, approves Gate A internally for this MVP, and records Direct pipeline/workspace/attempt metadata. It performs no automatic merge and no Obsidian write-back. A stored record alone is never evidence of execution success.

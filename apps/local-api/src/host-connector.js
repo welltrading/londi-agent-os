@@ -39,7 +39,9 @@ export function createInMemoryHostConnector({
   projects = [],
   runs = [],
   runsFilePath = 'data/runs/runs.json',
-  readFile = null
+  readFile = null,
+  executeManualRun = null,
+  refreshManualRun = executeManualRun?.refreshRun ?? null
 } = {}) {
   const cache = new Map();
   const projectStore = new Map(projects.map((project) => {
@@ -135,13 +137,73 @@ export function createInMemoryHostConnector({
       return Object.freeze([...runStore.values()].sort((a, b) => String(b.createdAt ?? b.lastUpdated ?? '').localeCompare(String(a.createdAt ?? a.lastUpdated ?? ''))));
     },
 
-    createManualRun(input = {}) {
+    async refreshRuns() {
+      if (typeof refreshManualRun !== 'function') return this.listRuns();
+      for (const storedRun of [...runStore.values()]) {
+        if (storedRun?.type !== 'manual' || storedRun.status !== 'running') continue;
+        try {
+          const result = await refreshManualRun({ run: storedRun });
+          if (!result?.status || result.status === storedRun.status) {
+            if (result?.execution) persistManualRun({ ...storedRun, execution: result.execution, lastUpdated: now() });
+            continue;
+          }
+          persistManualRun({
+            ...storedRun,
+            status: result.status,
+            summary: result.summary ?? storedRun.summary,
+            artifactPath: result.artifactPath ?? storedRun.artifactPath,
+            execution: result.execution ?? storedRun.execution,
+            error: result.error ?? null,
+            lastUpdated: now()
+          });
+        } catch (error) {
+          persistManualRun({
+            ...storedRun,
+            status: 'failed',
+            error: error?.message ?? 'Manual run status refresh failed.',
+            execution: {
+              ...(storedRun.execution ?? {}),
+              ...(error?.details?.execution ?? {}),
+              error: { code: error?.code ?? 'ERR_MANUAL_RUN_REFRESH', message: error?.message ?? 'Manual run status refresh failed.' }
+            },
+            lastUpdated: now()
+          });
+        }
+      }
+      return this.listRuns();
+    },
+
+    async createManualRun(input = {}) {
       const createdAt = now();
       const id = input.id ?? createManualRunId(input.title, createdAt);
-      const run = createManualRunRecord({ ...input, id, createdAt });
-      runStore.set(run.id, run);
-      persistRunsToDisk();
-      return run;
+      let run = persistManualRun({ ...input, id, createdAt, lastUpdated: createdAt, status: 'queued' });
+      if (typeof executeManualRun !== 'function') return run;
+
+      run = persistManualRun({ ...run, status: 'running', lastUpdated: now() });
+      const project = input.projectId ? projectStore.get(String(input.projectId).toLowerCase()) ?? projectStore.get(input.projectId) ?? null : null;
+      try {
+        const result = await executeManualRun({ run, input, project });
+        return persistManualRun({
+          ...run,
+          status: result?.status ?? 'succeeded',
+          summary: result?.summary ?? run.summary,
+          artifactPath: result?.artifactPath ?? run.artifactPath,
+          execution: result?.execution ?? run.execution,
+          error: result?.error ?? null,
+          lastUpdated: now()
+        });
+      } catch (error) {
+        return persistManualRun({
+          ...run,
+          status: 'failed',
+          error: error?.message ?? 'Manual run execution failed.',
+          execution: {
+            ...(error?.details?.execution ?? run.execution ?? {}),
+            error: { code: error?.code ?? 'ERR_MANUAL_RUN_EXECUTION', message: error?.message ?? 'Manual run execution failed.' }
+          },
+          lastUpdated: now()
+        });
+      }
     }
   });
 
@@ -166,6 +228,13 @@ export function createInMemoryHostConnector({
     const directory = String(runsFilePath).split(/[\\/]/).slice(0, -1).join('/') || '.';
     mkdir(directory, { recursive: true });
     writeFile(runsFilePath, `${JSON.stringify({ runs: [...runStore.values()] }, null, 2)}\n`, 'utf8');
+  }
+
+  function persistManualRun(input) {
+    const run = createManualRunRecord(input);
+    runStore.set(run.id, run);
+    persistRunsToDisk();
+    return run;
   }
 
   function normalizeStoredRun(run) {

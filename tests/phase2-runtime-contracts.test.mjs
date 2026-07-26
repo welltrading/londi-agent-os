@@ -55,8 +55,15 @@ assert.equal(run.skillId, 'obsidian-run-summary');
 const manualRun = createManualRunRecord({ id: 'Manual Run 1', title: 'Manual Run', prompt: 'Prompt text', summary: 'Summary text', createdAt: '2026-07-14T18:01:00.000Z' });
 assert.equal(manualRun.type, 'manual');
 assert.equal(manualRun.action, 'ask-agent-zero-general-task');
-assert.equal(manualRun.status, 'succeeded');
+assert.equal(manualRun.status, 'queued');
 assert.equal(manualRun.skillId, 'orchestration-control');
+const failedManualRun = createManualRunRecord({ ...manualRun, status: 'failed', error: 'execution failed', execution: { pipeline: 'direct', error: { code: 'ERR_TEST' } } });
+assert.equal(failedManualRun.error, 'execution failed');
+assert.equal(failedManualRun.execution.error.code, 'ERR_TEST');
+for (const status of ['queued', 'running', 'succeeded', 'failed']) {
+  assert.equal(createManualRunRecord({ id: `run-${status}`, title: status, prompt: status, summary: status, status }).status, status);
+}
+assert.throws(() => createManualRunRecord({ id: 'run-bad', title: 'bad', prompt: 'bad', summary: 'bad', status: 'idle' }), Phase2RuntimeContractError);
 const codexManualRun = createManualRunRecord({ id: 'Manual Run 2', title: 'Manual Run', prompt: 'Prompt text', summary: 'Summary text', agentId: 'codex' });
 assert.equal(codexManualRun.agentId, 'codex');
 assert.equal(codexManualRun.action, 'ask-codex-general-task');

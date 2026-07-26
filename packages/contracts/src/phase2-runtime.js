@@ -145,15 +145,17 @@ export function createMinimalRun({ id, title, projectId = null, agentId = 'agent
 }
 
 
-export function createManualRunRecord({ id, title, prompt, summary, status = 'succeeded', createdAt = new Date().toISOString(), projectId = null, agentId = 'agent-zero' } = {}) {
+export function createManualRunRecord({ id, title, prompt, summary, status = 'queued', createdAt = new Date().toISOString(), lastUpdated = createdAt, projectId = null, agentId = 'agent-zero', artifactPath = null, error = null, execution = null } = {}) {
   if (!id || !title || !prompt || !summary) throw new Phase2RuntimeContractError('Manual run requires id, title, prompt and summary.');
-  assertOneOf(status, ['succeeded'], 'manual run status');
+  assertOneOf(status, ['queued', 'running', 'succeeded', 'failed'], 'manual run status');
   assertOneOf(agentId, PHASE2_AGENT_IDS, 'manual run agent id');
   return deepFreeze({
-    ...createMinimalRun({ id, title, projectId, agentId, skillId: 'orchestration-control', status, summary, createdAt, lastUpdated: createdAt }),
+    ...createMinimalRun({ id, title, projectId, agentId, skillId: 'orchestration-control', status: status === 'queued' ? 'idle' : status, summary, artifactPath, createdAt, lastUpdated, error }),
+    status,
     type: 'manual',
     action: `ask-${agentId}-general-task`,
-    prompt: sanitizeText(prompt)
+    prompt: sanitizeText(prompt),
+    execution: execution && typeof execution === 'object' ? structuredClone(execution) : null
   });
 }
 
