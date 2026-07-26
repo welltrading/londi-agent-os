@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { getPipelineTemplate } from '@londi-agent-os/contracts';
 import { createClaudeCodeAdapter, createCodexAdapter } from '@londi-agent-os/adapters';
 import { createPipelineApprovalGate, decidePipelineApprovalGate } from './approvals.js';
@@ -41,7 +42,14 @@ export function createDirectManualRunExecutor({
     const attempt = heartbeat.data?.attempt ?? execution?.attempts?.execute ?? null;
     const nextExecution = { ...(execution ?? {}), attempts: { ...(execution?.attempts ?? {}), execute: safeAttempt(attempt) } };
     if (heartbeat.data?.alive === true || attempt?.status === 'Running') return { status: 'running', execution: nextExecution };
-    if (attempt?.exitCode === 0) return { status: 'succeeded', execution: nextExecution };
+    if (attempt?.exitCode === 0) {
+      const verification = verifyWorkspaceChanges(nextExecution.workspace?.worktreePath);
+      const verifiedExecution = { ...nextExecution, verification };
+      if (verification.changedFiles.length === 0) {
+        return { status: 'failed', error: 'Agent exited successfully but produced no workspace changes.', execution: verifiedExecution };
+      }
+      return { status: 'succeeded', execution: verifiedExecution };
+    }
     return { status: 'failed', error: 'Direct manual run process exited unsuccessfully.', execution: nextExecution };
   }
 
@@ -51,7 +59,8 @@ export function createDirectManualRunExecutor({
       agentId: run?.agentId ?? input.agentId ?? null,
       workspace: null,
       gateA: null,
-      attempts: { execute: null }
+      attempts: { execute: null },
+      verification: { changedFiles: [] }
     };
 
     try {
@@ -127,6 +136,13 @@ export function createDirectManualRunExecutor({
         return { status: 'running', summary: run.summary, artifactPath: null, execution };
       }
       if (attempt?.exitCode === 0) {
+        execution.verification = verifyWorkspaceChanges(workspace.worktreePath);
+        if (execution.verification.changedFiles.length === 0) {
+          throw new DirectManualRunExecutionError('Agent exited successfully but produced no workspace changes.', {
+            execution,
+            attempt: safeAttempt(attempt)
+          });
+        }
         return { status: 'succeeded', summary: run.summary, artifactPath: null, execution };
       }
       throw new DirectManualRunExecutionError('Direct manual run process exited unsuccessfully.', {
@@ -147,6 +163,29 @@ export function createDirectManualRunExecutor({
 
   executeDirectManualRun.refreshRun = refreshDirectManualRun;
   return executeDirectManualRun;
+}
+
+function verifyWorkspaceChanges(worktreePath) {
+  if (!worktreePath) return { changedFiles: [] };
+  const result = spawnSync('git', ['status', '--short'], { cwd: worktreePath, encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new DirectManualRunExecutionError('Workspace change verification failed.', {
+      worktreePath,
+      stderr: result.stderr,
+      stdout: result.stdout
+    });
+  }
+  const changedFiles = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => ({ status: line.slice(0, 2).trim(), path: line.slice(3).trim() }))
+    .filter((entry) => isAgentProducedChange(entry.path));
+  return { changedFiles };
+}
+
+function isAgentProducedChange(filePath) {
+  return Boolean(filePath) && !['londi-workspace-manifest.json'].includes(filePath);
 }
 
 function assertManualRunInput({ run, project, agentId }) {
