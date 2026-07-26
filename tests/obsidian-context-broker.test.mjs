@@ -21,7 +21,7 @@ try {
   writeFileSync(join(nested, 'AI Sales.md'), `---\ntitle: WhatsApp AI Sales Assistant\nclient: Example Clinic\nkeywords: whatsapp, sales, clinic\n---\n# WhatsApp AI Sales Assistant\nLinks to [[Lead Intake]] and #automation. Handles WhatsApp leads and Airtable follow up.\n`, 'utf8');
   writeFileSync(join(nested, 'Ops.md'), `---\ntitle: Operations Note\n---\n# Operations\nGeneral process note.\n`, 'utf8');
   writeFileSync(join(outside, 'Secret.md'), `---\ntitle: Secret WhatsApp Note\n---\nOutside root should not be scanned even with WhatsApp keyword.\n`, 'utf8');
-  symlinkSync(outside, join(approved, 'linked-outside'), 'dir');
+symlinkSync(outside, join(approved, 'linked-outside'), directorySymlinkType());
 
   const broker = createObsidianContextBroker({ roots: [approved], now: '2026-01-01T00:00:00.000Z' });
   assert.equal(broker.roots.length, 1);
@@ -52,4 +52,7 @@ try {
   console.log('Obsidian context broker tests OK');
 } finally {
   rmSync(temp, { recursive: true, force: true });
+}
+function directorySymlinkType() {
+  return process.platform === 'win32' ? 'junction' : 'dir';
 }
