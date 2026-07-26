@@ -79,7 +79,7 @@ function testPathJunctionEscape() {
     const link = join(worktree, 'vault-link');
     mkdirSync(worktree, { recursive: true });
     mkdirSync(denied, { recursive: true });
-    symlinkSync(denied, link, 'dir');
+      symlinkSync(denied, link, directorySymlinkType());
     const policy = createServiceAccountIsolationPolicy({ worktreePath: worktree, runArtifactsPath: artifacts, deniedRoots: [denied] });
     try {
       assertWorkspaceWriteAllowed({ policy, targetPath: join(link, 'escape.md') });
@@ -163,4 +163,7 @@ function deepFreezeSecurity(value) {
   if (!value || typeof value !== 'object') return value;
   for (const child of Object.values(value)) deepFreezeSecurity(child);
   return Object.freeze(value);
+}
+function directorySymlinkType() {
+  return process.platform === 'win32' ? 'junction' : 'dir';
 }
