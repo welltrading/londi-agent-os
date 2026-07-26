@@ -15,8 +15,8 @@ assert.equal(manager.assertControlledProcess({ attemptId: 'attempt-1', pid: atte
 const cancelled = await manager.cancelAttempt({ attemptId: 'attempt-1' });
 assert.equal(cancelled.status, 'Cancelled');
 assert.notEqual(cancelled.exitedAt, null);
-const ps = spawnSync('ps', ['-p', String(attempt.pid)], { encoding: 'utf8' });
-assert.equal(ps.stdout.includes(String(attempt.pid)), false);
+assert.equal(isProcessStillListed(attempt.pid), false);
+
 assert.throws(
   () => manager.assertControlledProcess({ attemptId: 'attempt-1', pid: process.pid }),
   ProcessControlError
@@ -27,3 +27,12 @@ await assert.rejects(
   ProcessControlError
 );
 console.log('Process manager tests OK');
+
+function isProcessStillListed(pid) {
+  if (process.platform === 'win32') {
+    const result = spawnSync('tasklist', ['/FI', `PID eq ${pid}`], { encoding: 'utf8' });
+    return result.status === 0 && (result.stdout ?? '').includes(String(pid));
+  }
+  const result = spawnSync('ps', ['-p', String(pid)], { encoding: 'utf8' });
+  return result.status === 0 && (result.stdout ?? '').includes(String(pid));
+}
