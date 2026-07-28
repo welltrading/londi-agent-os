@@ -128,6 +128,20 @@ try {
   const broken = createInMemoryHostConnector({ vaultPath: join(temp, 'vault') });
   assert.throws(() => broken.writeRunSummary({ runId: 'run-1', title: 'x', summary: 'x' }), HostConnectorError);
 
+  // Persistence is opt-in. A connector given write dependencies but no store paths must not fall
+  // back to a cwd-relative default, which previously wrote test fixtures into the repository's
+  // real data/ directory and surfaced them as selectable projects in the dashboard.
+  const writes = [];
+  const noPathConnector = createInMemoryHostConnector({
+    now,
+    mkdir: () => {},
+    writeFile: (path) => writes.push(path),
+    readFile: () => { throw new Error('no store path should ever be read'); }
+  });
+  noPathConnector.upsertProject({ id: 'leak-check', name: 'Leak Check', rootPath: join(temp, 'leak-check') });
+  await noPathConnector.createManualRun({ id: 'run-leak-check', title: 'Leak', prompt: 'x', summary: 'x' });
+  assert.deepEqual(writes, [], 'connector without store paths must not write to disk');
+
   const token = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_';
   const apiConnector = createInMemoryHostConnector({
     now,
@@ -137,6 +151,7 @@ try {
     writeFile: writeFileSync,
     joinPath: join,
     runsFilePath: join(temp, 'api-runs', 'runs.json'),
+    projectsFilePath: join(temp, 'api-projects', 'projects.json'),
     readFile: readFileSync,
     readDir: readdirSync,
     stat: statSync,

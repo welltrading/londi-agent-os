@@ -38,8 +38,10 @@ export function createInMemoryHostConnector({
   readDir = null,
   projects = [],
   runs = [],
-  runsFilePath = 'data/runs/runs.json',
-  projectsFilePath = 'data/projects/projects.json',
+  // Persistence is opt-in. A relative default resolves against the caller's cwd, which silently
+  // wrote test fixtures into the repository's real data directory.
+  runsFilePath = null,
+  projectsFilePath = null,
   readFile = null,
   detectDefaultBranch = null,
   executeManualRun = null,
@@ -232,7 +234,7 @@ export function createInMemoryHostConnector({
   }
 
   function readStoreFile(filePath, key, label, absorb) {
-    if (typeof readFile !== 'function') return;
+    if (!filePath || typeof readFile !== 'function') return;
     try {
       if (typeof exists === 'function' && !exists(filePath)) return;
       const parsed = JSON.parse(readFile(filePath, 'utf8'));
@@ -245,7 +247,7 @@ export function createInMemoryHostConnector({
   }
 
   function writeStoreFile(filePath, payload) {
-    if (typeof writeFile !== 'function' || typeof mkdir !== 'function') return;
+    if (!filePath || typeof writeFile !== 'function' || typeof mkdir !== 'function') return;
     const directory = String(filePath).split(/[\\/]/).slice(0, -1).join('/') || '.';
     mkdir(directory, { recursive: true });
     writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
