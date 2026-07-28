@@ -275,3 +275,14 @@ Append-only log of significant project decisions.
 - **Evidence:** `node tests/direct-manual-run-executor.test.mjs` covers restart reconciliation, no re-reconciliation of already-terminal runs, lock release enabling a second run on the same branch, and porcelain path parsing; `node tests/workspace-manager.test.mjs` covers same-day branch uniqueness and retained/cleaned release.
 - **Implication:** A run left `running` across a restart, as `run-20260722155729-host-codex-manual-smoke` was for six days, now resolves to an explicit recovery decision.
 - **Guardrail:** Success is never fabricated for an attempt that cannot be observed, and no merge happens automatically.
+
+## 2026-07-28 — Dashboard is a two-way conversation interface
+
+- **Decision:** The Runtime Dashboard is a persistent two-way conversation interface, not merely a task launcher.
+- **Requirement:** Every user message must receive a visible assistant response from the selected agent, including text-only answers, code-change summaries, clarification requests, blocked runs, and failures.
+- **Persistence:** User and assistant messages must remain visible after Refresh, Load, and runtime restart.
+- **Diagnostics:** Raw stdout/stderr must remain separate from the normal conversation and appear only in a bounded, redacted Details view.
+- **Success semantics:** Text-only conversation can succeed without file changes; an explicit code-change task must not succeed unless the requested workspace change is verified.
+- **Guardrail:** Agent-generated content must be escaped before rendering, and secrets must never be persisted or displayed.
+- **Evidence:** Manual runs carry `agentResponse` and `intent` end to end; `node tests/phase2-dashboard.test.mjs`, `node tests/direct-manual-run-executor.test.mjs`, and `node tests/host-connector.test.mjs` cover text-only success, verified code change, no-change failure under `code-change`, blocked-run explanation, legacy records without `agentResponse`, escaping, and restart survival. Live dashboard runs confirmed both paths: a question answered with no file changes, and `hello.txt` created only inside the isolated run worktree with no merge.
+- **Follow-up:** Persistent multi-turn agent context/thread continuity is a separate required slice. It is not supported today — each send is an independent agent invocation in a fresh worktree with no prior history.

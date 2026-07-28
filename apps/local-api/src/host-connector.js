@@ -165,6 +165,7 @@ export function createInMemoryHostConnector({
             summary: result.summary ?? storedRun.summary,
             artifactPath: result.artifactPath ?? storedRun.artifactPath,
             execution: result.execution ?? storedRun.execution,
+            agentResponse: result.agentResponse ?? storedRun.agentResponse,
             error: result.error ?? null,
             lastUpdated: now()
           });
@@ -201,6 +202,7 @@ export function createInMemoryHostConnector({
           summary: result?.summary ?? run.summary,
           artifactPath: result?.artifactPath ?? run.artifactPath,
           execution: result?.execution ?? run.execution,
+          agentResponse: result?.agentResponse ?? run.agentResponse,
           error: result?.error ?? null,
           lastUpdated: now()
         });
@@ -209,6 +211,8 @@ export function createInMemoryHostConnector({
           ...run,
           status: 'failed',
           error: error?.message ?? 'Manual run execution failed.',
+          // A failed run must still carry whatever the agent managed to say.
+          agentResponse: error?.details?.agentResponse ?? run.agentResponse,
           execution: {
             ...(error?.details?.execution ?? run.execution ?? {}),
             error: { code: error?.code ?? 'ERR_MANUAL_RUN_EXECUTION', message: error?.message ?? 'Manual run execution failed.' }

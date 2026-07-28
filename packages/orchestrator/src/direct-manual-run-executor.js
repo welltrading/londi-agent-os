@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { getPipelineTemplate } from '@londi-agent-os/contracts';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { DEFAULT_PHASE2_RUN_INTENT, getPipelineTemplate } from '@londi-agent-os/contracts';
 import { createClaudeCodeAdapter, createCodexAdapter, sanitizeAdapterText } from '@londi-agent-os/adapters';
 import { createPipelineApprovalGate, decidePipelineApprovalGate } from './approvals.js';
 import { createAttemptProcessManager } from './process-manager.js';
@@ -8,6 +10,7 @@ import { RECOVERY_ACTIONS } from './restart-recovery.js';
 
 const DIRECT_MANUAL_AGENT_IDS = Object.freeze(['codex', 'claude-code']);
 export const DIRECT_MANUAL_DIAGNOSTIC_TAIL_BYTES = 2000;
+export const DIRECT_MANUAL_RESPONSE_MAX_BYTES = 8000;
 // Signals that the agent understood the task but was refused write access. Without these, a
 // blocked run is indistinguishable from an agent that simply chose to do nothing.
 const BLOCKED_OUTPUT_PATTERN = /read-only sandbox|patch rejected|writing is blocked|rejected by user approval|permission denied|not permitted/i;
@@ -51,15 +54,18 @@ export function createDirectManualRunExecutor({
     const diagnostics = captureDiagnostics(attempt) ?? execution?.diagnostics ?? null;
     const nextExecution = { ...(execution ?? {}), attempts: { ...(execution?.attempts ?? {}), execute: safeAttempt(attempt) }, diagnostics };
     if (heartbeat.data?.alive === true || attempt?.status === 'Running') return { status: 'running', execution: nextExecution };
+    const intent = run?.intent ?? execution?.intent ?? DEFAULT_PHASE2_RUN_INTENT;
+    const agentResponse = readAgentResponse(createResponseFilePath(run?.id), attempt);
     if (attempt?.exitCode === 0) {
       const verification = verifyWorkspaceChanges(nextExecution.workspace?.worktreePath);
       const verifiedExecution = { ...nextExecution, verification };
-      if (verification.changedFiles.length === 0) {
-        return { status: 'failed', error: describeNoChangeExit(diagnostics), execution: finishWorkspace(verifiedExecution, run?.id, false) };
+      if (intent === 'code-change' && verification.changedFiles.length === 0) {
+        return { status: 'failed', error: describeNoChangeExit(diagnostics), agentResponse, execution: finishWorkspace(verifiedExecution, run?.id, false) };
       }
-      return { status: 'succeeded', execution: finishWorkspace(verifiedExecution, run?.id, true) };
+      const retain = verification.changedFiles.length > 0;
+      return { status: 'succeeded', agentResponse, execution: finishWorkspace(verifiedExecution, run?.id, retain) };
     }
-    return { status: 'failed', error: 'Direct manual run process exited unsuccessfully.', execution: finishWorkspace(nextExecution, run?.id, false) };
+    return { status: 'failed', error: 'Direct manual run process exited unsuccessfully.', agentResponse, execution: finishWorkspace(nextExecution, run?.id, false) };
   }
 
   function reconcileUnsupervisedRun({ run, execution, reason }) {
@@ -78,6 +84,20 @@ export function createDirectManualRunExecutor({
     };
   }
 
+  // The agent's final message goes to a file the CLI writes, kept outside the worktree so it is
+  // never mistaken for agent-produced work. Adapters that ignore `responseFile` fall back to their
+  // stdout, which for `claude --print` is already exactly the response.
+  function createResponseFilePath(runId) {
+    if (!runId) return null;
+    const directory = resolve(join(dataRoot, 'agent-responses'));
+    try {
+      mkdirSync(directory, { recursive: true });
+    } catch {
+      return null;
+    }
+    return join(directory, `${String(runId).replace(/[^A-Za-z0-9._-]/g, '-')}.txt`);
+  }
+
   // Terminal states always release the workspace lock. The worktree/branch are retained whenever
   // they may hold agent work (manual merge is the only path); they are removed only when the run
   // produced nothing.
@@ -88,14 +108,17 @@ export function createDirectManualRunExecutor({
   }
 
   async function executeDirectManualRun({ run, input = {}, project } = {}) {
+    const intent = run?.intent ?? input.intent ?? DEFAULT_PHASE2_RUN_INTENT;
     const execution = {
       pipeline: 'direct',
       agentId: run?.agentId ?? input.agentId ?? null,
+      intent,
       workspace: null,
       gateA: null,
       attempts: { execute: null },
       verification: { changedFiles: [] }
     };
+    const responseFile = createResponseFilePath(run?.id);
 
     try {
       assertManualRunInput({ run, project, agentId: execution.agentId });
@@ -153,7 +176,7 @@ export function createDirectManualRunExecutor({
       }
 
       const attemptId = `${run.id}-execute`;
-      const delivery = await adapter.deliverTask({ attemptId, prompt: run.prompt, cwd: workspace.worktreePath });
+      const delivery = await adapter.deliverTask({ attemptId, prompt: run.prompt, cwd: workspace.worktreePath, responseFile });
       assertAdapterSuccess(delivery, 'deliverTask', execution);
       execution.attempts.execute = safeAttempt(delivery.data?.attempt ?? { attemptId });
 
@@ -168,22 +191,26 @@ export function createDirectManualRunExecutor({
       execution.diagnostics = captureDiagnostics(attempt) ?? execution.diagnostics ?? null;
 
       if (heartbeat.data?.alive === true || attempt?.status === 'Running') {
-        return { status: 'running', summary: run.summary, artifactPath: null, execution };
+        return { status: 'running', summary: run.summary, artifactPath: null, execution, agentResponse: null };
       }
+      const agentResponse = readAgentResponse(responseFile, attempt);
       if (attempt?.exitCode === 0) {
         execution.verification = verifyWorkspaceChanges(workspace.worktreePath);
-        if (execution.verification.changedFiles.length === 0) {
-          // Exit 0 with nothing written is never a success: the agent may have been refused write
-          // access and still exited cleanly.
+        // A question may legitimately succeed with text and no edits. A code-change request may
+        // not: exit 0 with nothing written usually means the agent was refused write access.
+        if (intent === 'code-change' && execution.verification.changedFiles.length === 0) {
           throw new DirectManualRunExecutionError(describeNoChangeExit(execution.diagnostics), {
             execution,
+            agentResponse,
             attempt: safeAttempt(attempt)
           });
         }
-        return { status: 'succeeded', summary: run.summary, artifactPath: null, execution: finishWorkspace(execution, run.id, true) };
+        const retain = execution.verification.changedFiles.length > 0;
+        return { status: 'succeeded', summary: run.summary, artifactPath: null, agentResponse, execution: finishWorkspace(execution, run.id, retain) };
       }
       throw new DirectManualRunExecutionError('Direct manual run process exited unsuccessfully.', {
         execution,
+        agentResponse,
         attempt: safeAttempt(attempt)
       });
     } catch (error) {
@@ -196,6 +223,8 @@ export function createDirectManualRunExecutor({
         execution: releasedExecution,
         causeCode: error?.code ?? null
       });
+    } finally {
+      discardResponseFile(responseFile);
     }
   }
 
@@ -256,6 +285,32 @@ function boundedRedactedTail(value, maxBytes) {
   if (!text) return { text: '', truncated: false };
   const truncated = text.length > maxBytes;
   return { text: sanitizeAdapterText(truncated ? text.slice(-maxBytes) : text), truncated };
+}
+
+function readAgentResponse(responseFile, attempt) {
+  const fromFile = readResponseFile(responseFile);
+  if (fromFile) return fromFile;
+  return boundedRedactedTail(attempt?.stdout, DIRECT_MANUAL_RESPONSE_MAX_BYTES).text || null;
+}
+
+function readResponseFile(responseFile) {
+  if (!responseFile || !existsSync(responseFile)) return null;
+  try {
+    const text = readFileSync(responseFile, 'utf8').trim();
+    if (!text) return null;
+    return sanitizeAdapterText(text.length > DIRECT_MANUAL_RESPONSE_MAX_BYTES ? text.slice(-DIRECT_MANUAL_RESPONSE_MAX_BYTES) : text);
+  } catch {
+    return null;
+  }
+}
+
+function discardResponseFile(responseFile) {
+  if (!responseFile) return;
+  try {
+    rmSync(responseFile, { force: true });
+  } catch {
+    // A leftover response file is harmless; it is overwritten on the next run with the same id.
+  }
 }
 
 function describeNoChangeExit(diagnostics) {

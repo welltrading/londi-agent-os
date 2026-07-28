@@ -15,6 +15,10 @@ export const PHASE2_SKILL_IDS = Object.freeze([
 export const PHASE2_ACTIVE_SKILL_IDS = Object.freeze(['obsidian-run-summary', 'local-agent-status', 'usage-status-refresh']);
 export const PHASE2_PROJECT_STATUSES = Object.freeze(['active', 'paused', 'archived']);
 export const PHASE2_RUN_STATUSES = Object.freeze(['queued', 'idle', 'running', 'succeeded', 'failed']);
+// Intent is chosen explicitly in the composer, never inferred from prompt text: a wrong guess
+// either fails a legitimate question or silently passes an edit that changed nothing.
+export const PHASE2_RUN_INTENTS = Object.freeze(['conversation', 'code-change']);
+export const DEFAULT_PHASE2_RUN_INTENT = 'conversation';
 export const PHASE2_DEFAULT_TARGET_BRANCHES = Object.freeze(['main', 'master']);
 export const PHASE2_PROJECT_BROWSER_ENTRY_TYPES = Object.freeze(['directory', 'file']);
 export const OBSIDIAN_RUN_SUMMARY_TARGET_FOLDER = 'Londi Agent OS/Runs/';
@@ -148,16 +152,24 @@ export function createMinimalRun({ id, title, projectId = null, agentId = 'agent
 }
 
 
-export function createManualRunRecord({ id, title, prompt, summary, status = 'queued', createdAt = new Date().toISOString(), lastUpdated = createdAt, projectId = null, agentId = 'agent-zero', artifactPath = null, error = null, execution = null } = {}) {
+export function createManualRunRecord({ id, title, prompt, summary, status = 'queued', createdAt = new Date().toISOString(), lastUpdated = createdAt, projectId = null, agentId = 'agent-zero', artifactPath = null, error = null, execution = null, agentResponse = null, intent = DEFAULT_PHASE2_RUN_INTENT } = {}) {
   if (!id || !title || !prompt || !summary) throw new Phase2RuntimeContractError('Manual run requires id, title, prompt and summary.');
   assertOneOf(status, ['queued', 'running', 'succeeded', 'failed'], 'manual run status');
   assertOneOf(agentId, PHASE2_AGENT_IDS, 'manual run agent id');
+  // Records written before two-way conversation existed carry no intent; default them rather than
+  // rejecting, so old runs.json files still load.
+  const runIntent = intent ?? DEFAULT_PHASE2_RUN_INTENT;
+  assertOneOf(runIntent, PHASE2_RUN_INTENTS, 'manual run intent');
   return deepFreeze({
     ...createMinimalRun({ id, title, projectId, agentId, skillId: 'orchestration-control', status, summary, artifactPath, createdAt, lastUpdated, error }),
     status,
     type: 'manual',
     action: `ask-${agentId}-general-task`,
     prompt: sanitizeText(prompt),
+    intent: runIntent,
+    // The agent's own final message. Held separately from execution.diagnostics: this is what the
+    // operator reads, diagnostics are the raw bounded transcript behind Details.
+    agentResponse: agentResponse ? sanitizeText(agentResponse) : null,
     execution: execution && typeof execution === 'object' ? structuredClone(execution) : null
   });
 }

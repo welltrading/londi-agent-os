@@ -1,6 +1,10 @@
-import { listPhase2AgentCards, listPhase2Skills, createProjectWorkspace, createMinimalRun, createProjectBrowserSnapshot } from '@londi-agent-os/contracts';
+import { listPhase2AgentCards, listPhase2Skills, createProjectWorkspace, createMinimalRun, createManualRunRecord, createProjectBrowserSnapshot, DEFAULT_PHASE2_RUN_INTENT } from '@londi-agent-os/contracts';
 
 export const EXECUTING_AGENT_IDS = Object.freeze(['codex', 'claude-code']);
+export const MANUAL_RUN_INTENT_OPTIONS = Object.freeze([
+  { id: 'conversation', label: 'Ask a question' },
+  { id: 'code-change', label: 'Change code' }
+]);
 
 export class Phase2DashboardError extends Error {
   constructor(message, details = {}) {
@@ -13,7 +17,10 @@ export class Phase2DashboardError extends Error {
 
 export function createPhase2DashboardModel({ agents = listPhase2AgentCards(), skills = listPhase2Skills(), projects = [], runs = [], obsidian = null, projectBrowser = null, generatedAt = new Date().toISOString(), lastUpdated = null, cached = false, errors = [] } = {}) {
   const normalizedProjects = projects.map(createProjectWorkspace);
-  const normalizedRuns = runs.map(createMinimalRun);
+  // Manual runs keep their conversation fields; `createMinimalRun` alone would drop the prompt,
+  // the agent's response and the execution result, which is why the dashboard showed only the
+  // user's own message.
+  const normalizedRuns = runs.map(normalizeDashboardRun).sort(byCreatedAt);
   return deepFreeze({
     generatedAt,
     lastUpdated: lastUpdated ?? generatedAt,
@@ -73,7 +80,20 @@ export function createPhase2DashboardViewModel(model = createPhase2DashboardMode
       error: dashboard.projectBrowser.error
     } : null,
     skills: dashboard.skills.map((skill) => ({ id: skill.id, displayName: skill.displayName, active: skill.active, agents: skill.agentIds.length })),
-    runs: dashboard.runs.map((run) => ({ id: run.id, title: run.title, status: run.status, agentId: run.agentId, agentName: dashboard.agents.find((agent) => agent.id === run.agentId)?.name ?? run.agentId, skillId: run.skillId, summary: run.summary, artifactPath: run.artifactPath, lastUpdated: run.lastUpdated, createdAt: run.createdAt ?? run.lastUpdated, tone: toneForRunStatus(run.status) })),
+    runs: dashboard.runs.map((run) => ({
+      id: run.id,
+      title: run.title,
+      status: run.status,
+      agentId: run.agentId,
+      agentName: dashboard.agents.find((agent) => agent.id === run.agentId)?.name ?? run.agentId,
+      skillId: run.skillId,
+      summary: run.summary,
+      artifactPath: run.artifactPath,
+      lastUpdated: run.lastUpdated,
+      createdAt: run.createdAt ?? run.lastUpdated,
+      tone: toneForRunStatus(run.status),
+      ...describeConversationTurn(run)
+    })),
     actions: dashboard.actions,
     errors: dashboard.errors
   });
@@ -130,7 +150,8 @@ export function createPhase2DashboardScreenModel(interaction = createPhase2Dashb
       section('agents', 'Agent Management', model.agents),
       section('projects', 'Project Workspace', model.projects),
       section('project-browser', 'Project Browser', model.projectBrowser?.entries ?? []),
-      section('new-run', 'New Run', model.runs.slice(-3), { agents: model.agents, projects: model.projects, selection: model.selection ?? normalizeManualRunSelection(null) }),
+      // The whole conversation, oldest first — a chat that forgets on refresh is not a chat.
+      section('new-run', 'Conversation', model.runs.filter((run) => run.type === 'manual'), { agents: model.agents, projects: model.projects, selection: model.selection ?? normalizeManualRunSelection(null) }),
       section('runs', 'Runs', model.runs),
       section('obsidian', 'Obsidian', [{ label: model.obsidianLabel, tone: model.obsidianTone }]),
       section('skills', 'Skill Registry', model.skills)
@@ -323,8 +344,8 @@ export function createPhase2DashboardDomBinder({ screen, documentRef = globalThi
     if (controlId !== 'create-manual-run') return withSelection;
     return { ...withSelection, input: readManualRunFormInput() };
   };
-  const readManualRunFormInput = () => createChatManualRunInput(readFormValue('manual-run-prompt'), readFormValue('manual-run-agent'), readFormValue('manual-run-project'));
-  const readManualRunFormSelection = () => normalizeManualRunSelection({ agentId: readFormValue('manual-run-agent'), projectId: readFormValue('manual-run-project') });
+  const readManualRunFormInput = () => createChatManualRunInput(readFormValue('manual-run-prompt'), readFormValue('manual-run-agent'), readFormValue('manual-run-project'), readFormValue('manual-run-intent'));
+  const readManualRunFormSelection = () => normalizeManualRunSelection({ agentId: readFormValue('manual-run-agent'), projectId: readFormValue('manual-run-project'), intent: readFormValue('manual-run-intent') });
   const readFormValue = (field) => mountedTarget?.querySelector?.(`[data-field="${field}"]`)?.value ?? '';
 
   return Object.freeze({
@@ -390,7 +411,7 @@ export function createPhase2DashboardController({ runtime, createIdempotencyKey 
       return runAction('write-run-summary', () => runtime.writeRunSummary({ input, idempotencyKey: key }));
     },
     createManualRun({ input, idempotencyKey, selection } = {}) {
-      rememberSelection({ selection: selection ?? { agentId: input?.agentId, projectId: input?.projectId } });
+      rememberSelection({ selection: selection ?? { agentId: input?.agentId, projectId: input?.projectId, intent: input?.intent } });
       return runAction('create-manual-run', () => {
         const normalizedInput = validateManualRunInput(input);
         const key = idempotencyKey ?? createDashboardIdempotencyKey(normalizedInput, 'manual-run');
@@ -553,7 +574,11 @@ function renderManualRunForm(sectionItem = { items: [], meta: {} }) {
     agents.map((agent) => `<option value="${escapeHtml(agent.id)}"${agent.id === selection.agentId ? ' selected' : ''}>${escapeHtml(agent.name)}</option>`).join(''),
     '</select></label><label><span>Project</span><select data-field="manual-run-project" name="projectId">',
     projectOptions.map((project) => `<option value="${escapeHtml(project.id)}"${project.id === selection.projectId ? ' selected' : ''}>${escapeHtml(project.name)}</option>`).join(''),
-    '</select></label><span>General task</span></div>',
+    // Intent is chosen, not guessed: a question should not fail for changing no files, and an
+    // edit request should not pass when it changed nothing.
+    '</select></label><label><span>Mode</span><select data-field="manual-run-intent" name="intent">',
+    MANUAL_RUN_INTENT_OPTIONS.map((option) => `<option value="${escapeHtml(option.id)}"${option.id === selection.intent ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join(''),
+    '</select></label></div>',
     `<div class="phase2-dashboard__chat-messages" aria-live="polite">${messages}</div>`,
     '<label class="phase2-dashboard__chat-composer"><span>Message</span><textarea data-field="manual-run-prompt" name="prompt" rows="3" placeholder="כתוב בקשה..." required></textarea></label>',
     '<button type="button" data-control-id="create-manual-run">Send</button>',
@@ -561,33 +586,119 @@ function renderManualRunForm(sectionItem = { items: [], meta: {} }) {
   ].join('');
 }
 
+// One run renders as two bubbles: the operator's message and the agent's reply. All agent-supplied
+// text goes through escapeHtml, so a response containing markup renders as text and never as DOM.
 function renderChatMessage(run) {
-  const text = stripManualChatSummary(run.summary) || run.title || '';
   const time = run.createdAt ?? run.lastUpdated ?? '';
-  return `<article class="phase2-dashboard__chat-message" data-run-id="${escapeHtml(run.id)}"><span>${escapeHtml(text)}</span>${time ? `<time>${escapeHtml(time)}</time>` : ''}</article>`;
+  const agentName = run.agentName ?? run.agentId ?? 'Agent';
+  const statusLabel = run.pending ? 'running' : run.status;
+  return [
+    `<article class="phase2-dashboard__turn" data-run-id="${escapeHtml(run.id)}" data-intent="${escapeHtml(run.intent ?? '')}">`,
+    `<div class="phase2-dashboard__chat-message" data-role="user"><span>${escapeHtml(run.userMessage ?? '')}</span>${time ? `<time>${escapeHtml(time)}</time>` : ''}</div>`,
+    `<div class="phase2-dashboard__chat-message" data-role="assistant" data-status="${escapeHtml(run.status ?? '')}" data-tone="${escapeHtml(run.tone ?? 'neutral')}">`,
+    `<header><strong>${escapeHtml(agentName)}</strong><em data-run-status="${escapeHtml(run.status ?? '')}"${run.pending ? ' aria-busy="true"' : ''}>${escapeHtml(statusLabel ?? '')}</em></header>`,
+    `<span>${escapeHtml(run.assistantMessage ?? '')}</span>`,
+    renderTurnResult(run),
+    renderTurnDetails(run),
+    `${run.lastUpdated ? `<time>${escapeHtml(run.lastUpdated)}</time>` : ''}`,
+    '</div>',
+    '</article>'
+  ].join('');
+}
+
+function renderTurnResult(run) {
+  const result = run.result ?? {};
+  const files = result.changedFiles ?? [];
+  if (!files.length && !result.branchName) return '';
+  const fileList = files.length
+    ? `<ul class="phase2-dashboard__files">${files.map((file) => `<li><code>${escapeHtml(file.status)}</code> ${escapeHtml(file.path)}</li>`).join('')}</ul>`
+    : '<p class="phase2-dashboard__files-empty">No files changed.</p>';
+  const branch = result.branchName ? `<p class="phase2-dashboard__branch">Branch <code>${escapeHtml(result.branchName)}</code> · not merged</p>` : '';
+  const tests = result.testResult ? `<p class="phase2-dashboard__tests">Tests: ${escapeHtml(result.testResult)}</p>` : '';
+  return `<section class="phase2-dashboard__result" data-files="${files.length}"><h3>Result</h3>${fileList}${branch}${tests}</section>`;
+}
+
+// Raw transcript stays collapsed: useful when something goes wrong, noise the rest of the time.
+function renderTurnDetails(run) {
+  const diagnostics = run.diagnostics;
+  if (!diagnostics || (!diagnostics.stdoutTail && !diagnostics.stderrTail)) return '';
+  const truncated = diagnostics.truncated ? ' (truncated)' : '';
+  return [
+    '<details class="phase2-dashboard__details"><summary>Details</summary>',
+    diagnostics.stdoutTail ? `<pre data-stream="stdout">${escapeHtml(diagnostics.stdoutTail)}</pre>` : '',
+    diagnostics.stderrTail ? `<pre data-stream="stderr">${escapeHtml(diagnostics.stderrTail)}</pre>` : '',
+    `<p class="phase2-dashboard__details-note">Bounded, redacted adapter output${truncated}.</p>`,
+    '</details>'
+  ].join('');
 }
 
 function stripManualChatSummary(value) {
   return String(value ?? '').replace(/^Manual (Ask Agent Zero|[a-z0-9._-]+) chat message:\s*/i, '');
 }
 
-function createChatManualRunInput(promptValue, agentIdValue = 'agent-zero', projectIdValue = '') {
+function createChatManualRunInput(promptValue, agentIdValue = 'agent-zero', projectIdValue = '', intentValue = DEFAULT_PHASE2_RUN_INTENT) {
   const prompt = String(promptValue ?? '').trim();
-  const agentId = String(agentIdValue ?? 'agent-zero').trim() || 'agent-zero';
+  const { agentId, projectId, intent } = normalizeManualRunSelection({ agentId: agentIdValue, projectId: projectIdValue, intent: intentValue });
   const title = prompt.split(/\s+/).slice(0, 8).join(' ') || 'New agent chat';
   return {
     title,
     prompt,
     summary: prompt ? `Manual ${agentId} chat message: ${prompt}` : '',
     agentId,
-    projectId: String(projectIdValue ?? '').trim() || null
+    projectId: projectId || null,
+    intent
   };
 }
 
+// Every run is one conversation turn: what the operator asked, and what the agent answered.
+// A turn always has an assistant message — if the agent said nothing we explain why, so the user
+// is never left with a bare status badge.
+function describeConversationTurn(run) {
+  const isManual = run?.type === 'manual';
+  const userMessage = isManual ? (run.prompt || stripManualChatSummary(run.summary)) : stripManualChatSummary(run.summary);
+  const changedFiles = run?.execution?.verification?.changedFiles ?? [];
+  const diagnostics = run?.execution?.diagnostics ?? null;
+  return {
+    type: isManual ? 'manual' : 'run',
+    intent: run?.intent ?? DEFAULT_PHASE2_RUN_INTENT,
+    userMessage: userMessage || run?.title || '',
+    assistantMessage: run?.agentResponse || fallbackAssistantMessage(run),
+    hasAgentResponse: Boolean(run?.agentResponse),
+    pending: run?.status === 'running' || run?.status === 'queued',
+    result: {
+      changedFiles: changedFiles.map((file) => ({ status: file.status, path: file.path })),
+      branchName: run?.execution?.workspace?.branchName ?? null,
+      worktreePath: run?.execution?.workspace?.worktreePath ?? null,
+      testResult: run?.execution?.testResult ?? null,
+      merged: false
+    },
+    diagnostics: diagnostics ? { stdoutTail: diagnostics.stdoutTail ?? '', stderrTail: diagnostics.stderrTail ?? '', truncated: Boolean(diagnostics.truncated), blocked: Boolean(diagnostics.blocked) } : null
+  };
+}
+
+// Used only when the agent produced no message of its own; never a substitute for a real answer.
+function fallbackAssistantMessage(run) {
+  if (run?.status === 'running') return 'Working on it…';
+  if (run?.status === 'queued') return 'Queued.';
+  if (run?.error) return run.error;
+  if (run?.status === 'succeeded') return 'Completed without a message.';
+  return 'No response was captured for this run.';
+}
+
+function normalizeDashboardRun(run) {
+  return run?.type === 'manual' ? createManualRunRecord(run) : createMinimalRun(run);
+}
+
+function byCreatedAt(left, right) {
+  return String(left.createdAt ?? left.lastUpdated ?? '').localeCompare(String(right.createdAt ?? right.lastUpdated ?? ''));
+}
+
 export function normalizeManualRunSelection(selection) {
+  const intent = String(selection?.intent ?? DEFAULT_PHASE2_RUN_INTENT).trim();
   return {
     agentId: String(selection?.agentId ?? 'agent-zero').trim() || 'agent-zero',
-    projectId: String(selection?.projectId ?? '').trim()
+    projectId: String(selection?.projectId ?? '').trim(),
+    intent: MANUAL_RUN_INTENT_OPTIONS.some((option) => option.id === intent) ? intent : DEFAULT_PHASE2_RUN_INTENT
   };
 }
 
@@ -636,7 +747,7 @@ function validateManualRunInput(input = {}) {
   if (EXECUTING_AGENT_IDS.includes(agentId) && !projectId) {
     throw new Phase2DashboardError(`Select a project before sending to ${agentId}. ${agentId} runs inside a registered Git project.`, { agentId, missing: 'projectId' });
   }
-  return { title, prompt, summary, agentId, projectId: projectId || null };
+  return { title, prompt, summary, agentId, projectId: projectId || null, intent: normalizeManualRunSelection(input).intent };
 }
 
 function toneForAgentStatus(status) {

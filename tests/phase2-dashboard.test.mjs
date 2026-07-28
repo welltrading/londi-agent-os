@@ -242,7 +242,7 @@ assert.equal(mounted.renderPolicy.noPolling, true);
 assert.equal(rootNode.innerHTML.includes('data-shell-id="phase2-dashboard-shell"'), true);
 assert.equal(rootNode.innerHTML.includes('phase2-dashboard__chat-composer'), true);
 await rootNode.querySelector('[data-control-id="refresh"]').click();
-assert.deepEqual(screenCalls.at(-1), ['dom', 'refresh', { source: 'dom-binder', controlId: 'refresh', bindingEvent: 'click', selection: { agentId: 'agent-zero', projectId: '' } }]);
+assert.deepEqual(screenCalls.at(-1), ['dom', 'refresh', { source: 'dom-binder', controlId: 'refresh', bindingEvent: 'click', selection: { agentId: 'agent-zero', projectId: '', intent: 'conversation' } }]);
 assert.equal('event' in screenCalls.at(-1)[2], false);
 assert.equal(rootNode.innerHTML.includes('Last action: refresh'), true);
 const unmounted = binder.unmount();
@@ -375,6 +375,95 @@ assert.match(selectionAdapter.html, /data-field="manual-run-project"/);
 assert.match(selectionAdapter.html, /<option value="claude-code" selected>/);
 assert.match(selectionAdapter.html, /<option value="londi-agent-os" selected>/);
 assert.equal(selectionAdapter.html.includes('manual-run-branch'), false);
+
+// --- two-way conversation ------------------------------------------------------------------
+// Every submitted message must produce a visible assistant response, whatever the outcome.
+const turnRuns = [
+  createManualRunRecord({
+    id: 'run-answer', title: 'Question', prompt: 'What does this repo do?', summary: 'Manual codex chat message: What does this repo do?',
+    status: 'succeeded', agentId: 'codex', intent: 'conversation', createdAt: '2026-07-28T20:00:00.000Z',
+    agentResponse: 'It is a local-first orchestration shell.',
+    execution: { verification: { changedFiles: [] }, diagnostics: { stdoutTail: 'raw transcript noise', stderrTail: '', truncated: false, blocked: false } }
+  }),
+  createManualRunRecord({
+    id: 'run-edit', title: 'Edit', prompt: 'Create hello.txt', summary: 'Manual codex chat message: Create hello.txt',
+    status: 'succeeded', agentId: 'codex', intent: 'code-change', createdAt: '2026-07-28T20:01:00.000Z',
+    agentResponse: 'Created hello.txt with one line.',
+    execution: { verification: { changedFiles: [{ status: '??', path: 'hello.txt' }] }, workspace: { branchName: 'londi/run-edit', worktreePath: 'C:/wt/run-edit' } }
+  }),
+  createManualRunRecord({
+    id: 'run-blocked-turn', title: 'Blocked', prompt: 'Edit README', summary: 'Manual codex chat message: Edit README',
+    status: 'failed', agentId: 'codex', intent: 'code-change', createdAt: '2026-07-28T20:02:00.000Z',
+    error: 'Agent exited successfully but produced no workspace changes. The agent reported it was blocked from writing; check execution.diagnostics.',
+    execution: { verification: { changedFiles: [] }, diagnostics: { stdoutTail: 'patch rejected: read-only sandbox', stderrTail: '', truncated: true, blocked: true } }
+  }),
+  // A legacy record: written before agentResponse/intent existed.
+  createManualRunRecord({
+    id: 'run-legacy-turn', title: 'Legacy', prompt: 'old prompt', summary: 'Manual codex chat message: old prompt',
+    status: 'succeeded', agentId: 'codex', createdAt: '2026-07-28T19:59:00.000Z'
+  })
+];
+const turnView = createPhase2DashboardViewModel(createPhase2DashboardModel({ runs: turnRuns }));
+const turnById = Object.fromEntries(turnView.runs.map((run) => [run.id, run]));
+
+// Ordered oldest-first by creation time, so the conversation reads top to bottom.
+assert.deepEqual(turnView.runs.map((run) => run.id), ['run-legacy-turn', 'run-answer', 'run-edit', 'run-blocked-turn']);
+
+// A text-only answer succeeds and is visible.
+assert.equal(turnById['run-answer'].userMessage, 'What does this repo do?');
+assert.equal(turnById['run-answer'].assistantMessage, 'It is a local-first orchestration shell.');
+assert.equal(turnById['run-answer'].hasAgentResponse, true);
+assert.deepEqual(turnById['run-answer'].result.changedFiles, []);
+
+// A code change shows the response and the changed files.
+assert.equal(turnById['run-edit'].assistantMessage, 'Created hello.txt with one line.');
+assert.deepEqual(turnById['run-edit'].result.changedFiles, [{ status: '??', path: 'hello.txt' }]);
+assert.equal(turnById['run-edit'].result.branchName, 'londi/run-edit');
+assert.equal(turnById['run-edit'].result.merged, false);
+
+// A blocked run still explains itself instead of showing only a badge.
+assert.match(turnById['run-blocked-turn'].assistantMessage, /blocked from writing/);
+assert.equal(turnById['run-blocked-turn'].diagnostics.blocked, true);
+
+// Legacy records load and still render an assistant bubble.
+assert.equal(turnById['run-legacy-turn'].intent, 'conversation');
+assert.equal(turnById['run-legacy-turn'].hasAgentResponse, false);
+assert.equal(turnById['run-legacy-turn'].assistantMessage, 'Completed without a message.');
+
+// A pending run shows a status indicator rather than a fabricated answer.
+const pendingTurn = createPhase2DashboardViewModel(createPhase2DashboardModel({
+  runs: [createManualRunRecord({ id: 'run-pending', title: 'Pending', prompt: 'hi', summary: 'Manual codex chat message: hi', status: 'running', agentId: 'codex' })]
+})).runs[0];
+assert.equal(pendingTurn.pending, true);
+assert.equal(pendingTurn.assistantMessage, 'Working on it…');
+
+// Rendering: both bubbles present, agent named, diagnostics behind Details, never in the bubble.
+const turnHtml = createPhase2DashboardVisualAdapter(createPhase2DashboardShellModel(createPhase2DashboardScreenModel(
+  createPhase2DashboardInteractionModel(turnView)
+))).html;
+assert.match(turnHtml, /data-role="user"/);
+assert.match(turnHtml, /data-role="assistant"/);
+assert.match(turnHtml, /It is a local-first orchestration shell\./);
+assert.match(turnHtml, /<strong>Codex<\/strong>/);
+assert.match(turnHtml, /<details class="phase2-dashboard__details"><summary>Details<\/summary>/);
+assert.match(turnHtml, /data-field="manual-run-intent"/);
+const assistantBubble = turnHtml.slice(turnHtml.indexOf('run-answer'), turnHtml.indexOf('run-edit'));
+assert.equal(assistantBubble.includes('<details'), true, 'diagnostics live behind Details');
+assert.equal(assistantBubble.indexOf('raw transcript noise') > assistantBubble.indexOf('<details'), true, 'raw output never precedes Details');
+
+// Agent-supplied content is escaped, so markup renders as text and cannot inject DOM.
+const injected = createPhase2DashboardVisualAdapter(createPhase2DashboardShellModel(createPhase2DashboardScreenModel(
+  createPhase2DashboardInteractionModel(createPhase2DashboardViewModel(createPhase2DashboardModel({
+    runs: [createManualRunRecord({
+      id: 'run-xss', title: 'XSS', prompt: '<img src=x onerror=alert(1)>', summary: 'Manual codex chat message: x',
+      status: 'succeeded', agentId: 'codex', agentResponse: '<script>alert("pwned")</script>',
+      execution: { verification: { changedFiles: [] }, diagnostics: { stdoutTail: '</pre><script>alert(2)</script>', stderrTail: '', truncated: false, blocked: false } }
+    })]
+  })))
+))).html;
+assert.equal(injected.includes('<script>alert'), false, 'agent response must not render as a script tag');
+assert.equal(injected.includes('<img src=x'), false, 'user message must not render as markup');
+assert.match(injected, /&lt;script&gt;alert\(&quot;pwned&quot;\)&lt;\/script&gt;/);
 
 console.log('Phase 2 dashboard tests OK');
 

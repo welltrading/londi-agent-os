@@ -213,6 +213,51 @@ try {
   assert.match(writable.execution.diagnostics.stdoutTail, /patch: completed/);
   assert.equal(writable.execution.diagnostics.blocked, false);
 
+  // A question may succeed with text and no edits; the same no-edit exit under `code-change`
+  // must still fail. Intent is explicit, never inferred from the prompt.
+  const answerText = 'This repository is a local-first orchestration shell. It coordinates agents over a Local API.';
+  const conversationExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'conversation-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, responseText: answerText }) }
+  });
+  const answered = await conversationExecutor({
+    run: manualRun('run-question', 'conversation'),
+    input: { targetBranch: 'main' },
+    project: { id: 'project-1', rootPath: repo }
+  });
+  assert.equal(answered.status, 'succeeded', 'a question with no file changes must succeed');
+  assert.equal(answered.agentResponse, answerText);
+  assert.deepEqual(answered.execution.verification.changedFiles, []);
+  assert.equal(answered.execution.intent, 'conversation');
+  assert.equal(answered.execution.workspaceRelease.retained, false, 'a pure answer leaves no work to keep');
+
+  await assert.rejects(
+    () => createDirectManualRunExecutor({
+      dataRoot: join(root, 'code-intent-data'),
+      settleMs: 0,
+      adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, responseText: answerText }) }
+    })({ run: manualRun('run-code-intent', 'code-change'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } }),
+    (error) => {
+      assert.match(error.message, /produced no workspace changes/);
+      assert.equal(error.details.agentResponse, answerText, 'the explanation must survive the failure');
+      return true;
+    }
+  );
+
+  // The response comes from the adapter's response file, not from raw diagnostics.
+  const bothExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'both-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, writeFileName: 'created.txt', responseText: 'Created created.txt as requested.', stdout: 'exec noise\napply patch\npatch: completed' }) }
+  });
+  const both = await bothExecutor({ run: manualRun('run-both', 'code-change'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } });
+  assert.equal(both.status, 'succeeded');
+  assert.equal(both.agentResponse, 'Created created.txt as requested.');
+  assert.deepEqual(both.execution.verification.changedFiles, [{ status: '??', path: 'created.txt' }]);
+  assert.equal(both.execution.diagnostics.stdoutTail.includes('exec noise'), true, 'raw transcript stays in diagnostics');
+  assert.equal(both.agentResponse.includes('exec noise'), false, 'diagnostics never leak into the response');
+
   // Regression: `git status` porcelain lines are fixed-width, so a modified tracked file must not
   // lose the first character of its path (` M README.md` -> `EADME.md`).
   const modifyExecutor = createDirectManualRunExecutor({
@@ -226,8 +271,8 @@ try {
   rmSync(root, { recursive: true, force: true });
 }
 
-function manualRun(id) {
-  return { id, agentId: 'codex', prompt: 'Update the project safely.', summary: 'Direct manual execution.' };
+function manualRun(id, intent = 'code-change') {
+  return { id, agentId: 'codex', intent, prompt: 'Update the project safely.', summary: 'Direct manual execution.' };
 }
 
 function unsupervisedAdapter() {
@@ -240,7 +285,7 @@ function unsupervisedAdapter() {
   };
 }
 
-function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null, modifyFileName = null, stdout = '', stderr = '' } = {}) {
+function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null, modifyFileName = null, stdout = '', stderr = '', responseText = null } = {}) {
   const attempt = providedAttempt ?? {
     attemptId: null,
     pid: 1234,
@@ -253,10 +298,12 @@ function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt =
   return {
     async health() { return { outcome: 'success', data: { healthy: true } }; },
     async capabilities() { return { outcome: 'success', data: { capabilities: ['code-editing'] } }; },
-    async deliverTask({ attemptId, cwd }) {
+    async deliverTask({ attemptId, cwd, responseFile }) {
       attempt.attemptId = attemptId;
       if (writeFileName) writeFileSync(join(cwd, writeFileName), 'agent produced a real change\n');
       if (modifyFileName) writeFileSync(join(cwd, modifyFileName), '# Manual run executor\n\nmodified by the agent\n');
+      // Mirrors `codex exec --output-last-message`: the CLI writes its final message to this file.
+      if (responseText && responseFile) writeFileSync(responseFile, `${responseText}\n`, 'utf8');
       return { outcome: 'success', data: { attempt: { ...attempt } } };
     },
     async heartbeat() { return { outcome: 'success', data: { alive: running, attempt: { ...attempt } } }; }

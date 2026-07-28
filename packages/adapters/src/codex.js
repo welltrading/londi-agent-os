@@ -74,11 +74,14 @@ export function createCodexAdapter({
       }
     },
 
-    async deliverTask({ attemptId, prompt, cwd, env = {}, args = [] } = {}) {
+    async deliverTask({ attemptId, prompt, cwd, env = {}, args = [], responseFile = null } = {}) {
       if (!processManager) return adapterTerminalFailure('deliverTask', 'Process manager is required for Codex task delivery.', 'CODEX_PROCESS_MANAGER_REQUIRED');
       if (!prompt) return adapterTerminalFailure('deliverTask', 'Prompt is required for Codex task delivery.', 'CODEX_PROMPT_REQUIRED');
       try {
-        const invocation = resolveInvocation(command, [...args, 'exec', '--sandbox', CODEX_EXEC_SANDBOX_MODE, prompt]);
+        // `--output-last-message` is the CLI's own contract for the agent's final message, which
+        // is far more reliable than scraping it out of the interleaved transcript on stdout.
+        const responseArgs = responseFile ? ['--output-last-message', responseFile] : [];
+        const invocation = resolveInvocation(command, [...args, 'exec', '--sandbox', CODEX_EXEC_SANDBOX_MODE, ...responseArgs, prompt]);
         const attempt = processManager.startAttempt({ attemptId, command: invocation.command, args: invocation.args, cwd, env, spawnOptions: invocation.spawnOptions ?? {} });
         return normalizeAdapterResult({ operation: 'deliverTask', outcome: 'success', data: { attempt: snapshotAttempt(attempt) } });
       } catch (error) {

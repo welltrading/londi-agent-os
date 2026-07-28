@@ -103,6 +103,33 @@ try {
   assert.equal(successfulRun.summary, 'Started. Executed.');
   assert.equal(successfulRun.execution.pipeline, 'direct');
 
+  // The agent's response must be persisted and survive a runtime restart, or the conversation
+  // resets to a one-sided transcript every time the service stops.
+  const conversationConnector = createInMemoryHostConnector({
+    now,
+    exists: existsSync,
+    mkdir: mkdirSync,
+    writeFile: writeFileSync,
+    readFile: readFileSync,
+    runsFilePath: join(temp, 'conversation', 'runs.json'),
+    projectsFilePath: join(temp, 'conversation', 'projects.json'),
+    executeManualRun: async () => ({ status: 'succeeded', agentResponse: 'It is a local-first orchestration shell.' })
+  });
+  const answered = await conversationConnector.createManualRun({ id: 'run-answered', title: 'Question', prompt: 'What is this?', summary: 'Manual codex chat message: What is this?', agentId: 'codex', intent: 'conversation' });
+  assert.equal(answered.status, 'succeeded');
+  assert.equal(answered.agentResponse, 'It is a local-first orchestration shell.');
+  assert.equal(answered.intent, 'conversation');
+  const rehydratedConversation = createInMemoryHostConnector({
+    exists: existsSync,
+    readFile: readFileSync,
+    runsFilePath: join(temp, 'conversation', 'runs.json'),
+    projectsFilePath: join(temp, 'conversation', 'projects.json')
+  });
+  const restored = rehydratedConversation.listRuns().find((item) => item.id === 'run-answered');
+  assert.equal(restored.agentResponse, 'It is a local-first orchestration shell.', 'response survives restart');
+  assert.equal(restored.prompt, 'What is this?');
+  assert.equal(restored.intent, 'conversation');
+
   const runningConnector = createInMemoryHostConnector({ executeManualRun: async () => ({ status: 'running', execution: { pipeline: 'direct', attempts: { execute: { status: 'Running' } } } }) });
   const runningRun = await runningConnector.createManualRun({ id: 'run-running', title: 'Running', prompt: 'Execute.', summary: 'Started.', agentId: 'codex' });
   assert.equal(runningRun.status, 'running');
