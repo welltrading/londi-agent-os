@@ -33,7 +33,19 @@ export class WorkspaceLifecycleError extends Error {
 export function deriveRunBranchName(runId) {
   const slug = String(runId ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   if (!slug) throw new WorkspaceLifecycleError('Run id is required for branch naming.');
-  return `londi/run-${slug.slice(0, 12)}`;
+  // Keep the whole run id: run ids embed a per-second timestamp, so truncating collapsed
+  // every run created on the same day onto one branch name.
+  return `londi/run-${slug.replace(/^run-/, '').slice(0, 60)}`;
+}
+
+export function detectDefaultBranch({ repositoryPath, candidates = ['main', 'master'] } = {}) {
+  if (!repositoryPath || !existsSync(repositoryPath)) return null;
+  const head = git(['symbolic-ref', '--short', 'HEAD'], repositoryPath);
+  if (head.status === 0 && head.stdout.trim()) return head.stdout.trim();
+  for (const candidate of candidates) {
+    if (git(['show-ref', '--verify', '--quiet', `refs/heads/${candidate}`], repositoryPath).status === 0) return candidate;
+  }
+  return null;
 }
 
 export function deriveRunWorktreePath({ dataRoot = './data', runId } = {}) {
@@ -71,6 +83,31 @@ export function createRunWorkspace({ repositoryPath, targetBranch, runId, dataRo
   });
   writeFileSync(join(worktreePath, 'londi-workspace-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   return manifest;
+}
+
+export function releaseRunWorkspace({ workspace, runId, lockStore, retain = false } = {}) {
+  const repositoryPath = workspace?.repositoryPath ?? null;
+  const targetBranch = workspace?.targetBranch ?? null;
+  const released = { lockReleased: false, worktreeRemoved: false, branchRemoved: false, retained: Boolean(retain), reason: null };
+  if (repositoryPath && targetBranch && lockStore?.release) {
+    try {
+      released.lockReleased = Boolean(lockStore.release({ repositoryPath, targetBranch, runId: runId ?? workspace?.runId }));
+    } catch (error) {
+      released.reason = error?.message ?? 'Workspace lock release failed.';
+    }
+  }
+  if (retain || !repositoryPath || !workspace?.worktreePath || !workspace?.branchName) return Object.freeze(released);
+
+  const removal = git(['worktree', 'remove', '--force', workspace.worktreePath], repositoryPath);
+  if (removal.status !== 0) {
+    released.reason = released.reason ?? safeGitError(removal);
+    return Object.freeze({ ...released, retained: true });
+  }
+  released.worktreeRemoved = true;
+  const branchRemoval = git(['branch', '-D', workspace.branchName], repositoryPath);
+  released.branchRemoved = branchRemoval.status === 0;
+  if (!released.branchRemoved) released.reason = released.reason ?? safeGitError(branchRemoval);
+  return Object.freeze(released);
 }
 
 function ensureNoExistingRefOrPath({ repositoryPath, branchName, worktreePath }) {

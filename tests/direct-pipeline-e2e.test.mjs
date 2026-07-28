@@ -39,7 +39,7 @@ try {
   const dataRoot = join(root, 'data');
   const workspace = createRunWorkspace({ repositoryPath: repo, targetBranch: 'main', runId, dataRoot, lockStore: createInMemoryWorkspaceLockStore() });
   assert.match(workspace.baseCommit, /^[0-9a-f]{40}$/);
-  assert.equal(workspace.branchName, 'londi/run-direct-e2e-r');
+  assert.equal(workspace.branchName, 'londi/run-direct-e2e-run');
 
   const gateA = createPipelineApprovalGate({
     id: `gate-a-${runId}`,

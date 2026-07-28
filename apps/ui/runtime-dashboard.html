@@ -123,15 +123,15 @@
 <body>
   <main>
     <p id="runtime-status" class="runtime-status">Connecting to local runtime…</p>
-    <!-- Dev fallback: npm run serve:runtime-dashboard. Local dev Token remains hidden. -->
+    <!-- The bearer token is never stored in this file. `npm run serve:runtime` injects the
+         process-scoped token into this response only, over loopback, with no-store. -->
     <section id="runtime-controls" class="runtime-controls" aria-label="Runtime Local API connection" hidden>
       <label>Local API token
-        <input id="token" type="password" autocomplete="off" placeholder="Paste bearer token from Credential Manager / dev shell" />
+        <input id="token" type="password" autocomplete="off" placeholder="Paste bearer token from Credential Manager" />
       </label>
       <label>Base URL
         <input id="base-url" type="url" value="http://127.0.0.1:3210/api/v1" />
       </label>
-      <button id="use-local-dev-token" type="button">Use local dev token</button>
       <button id="mount" type="button">Connect</button>
     </section>
     <div id="phase2-dashboard-root"></div>
@@ -144,9 +144,11 @@
     const tokenInput = document.querySelector('#token');
     const baseUrlInput = document.querySelector('#base-url');
     const mountButton = document.querySelector('#mount');
-    const localDevTokenButton = document.querySelector('#use-local-dev-token');
     const LOCAL_DEV_HOSTS = new Set(['127.0.0.1', 'localhost']);
-    const LOCAL_DEV_TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_';
+    // Replaced by the local dashboard server at request time. Left as the literal placeholder
+    // when the file is opened without that server, which falls back to manual connection.
+    const INJECTED_TOKEN = '%%LONDI_LOCAL_API_TOKEN%%';
+    const AUTO_TOKEN = INJECTED_TOKEN.startsWith('%%') ? '' : INJECTED_TOKEN;
     const LOCAL_DEV_BASE_URL = 'http://127.0.0.1:3210/api/v1';
     let app = null;
 
@@ -158,22 +160,15 @@
     }
 
     function loadLocalDevConnection() {
-      if (!LOCAL_DEV_HOSTS.has(window.location.hostname)) {
+      if (!LOCAL_DEV_HOSTS.has(window.location.hostname) || !AUTO_TOKEN) {
         controls.hidden = false;
-        localDevTokenButton.hidden = true;
         status.textContent = 'Connect to Local API to mount the dashboard.';
         return;
       }
-      tokenInput.value = LOCAL_DEV_TOKEN;
       baseUrlInput.value = LOCAL_DEV_BASE_URL;
       controls.hidden = true;
-      mountRuntimeDashboard({ token: LOCAL_DEV_TOKEN, baseUrl: LOCAL_DEV_BASE_URL });
+      mountRuntimeDashboard({ token: AUTO_TOKEN, baseUrl: LOCAL_DEV_BASE_URL });
     }
-
-    localDevTokenButton.hidden = !LOCAL_DEV_HOSTS.has(window.location.hostname);
-    localDevTokenButton.addEventListener('click', () => {
-      loadLocalDevConnection();
-    });
 
     mountButton.addEventListener('click', () => {
       const token = tokenInput.value.trim();

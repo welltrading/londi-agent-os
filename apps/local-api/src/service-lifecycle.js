@@ -9,7 +9,7 @@ import {
   loadDefaultLocalConfig,
   validateLocalConfig
 } from '@londi-agent-os/contracts';
-import { createDirectManualRunExecutor, ensureApprovedDataDirectories } from '@londi-agent-os/orchestrator';
+import { createDirectManualRunExecutor, detectDefaultBranch, ensureApprovedDataDirectories } from '@londi-agent-os/orchestrator';
 import { createInMemoryHostConnector } from './host-connector.js';
 
 export const SERVICE_NAME = 'LondiAgentOSLocalApi';
@@ -32,6 +32,8 @@ export function createServiceLifecycle(options = {}) {
     readDir: readdirSync,
     stat: statSync,
     runsFilePath: config.paths.runs ? join(config.paths.runs, 'runs.json') : 'data/runs/runs.json',
+    projectsFilePath: join(config.paths.projects ?? join(config.dataRoot, 'projects'), 'projects.json'),
+    detectDefaultBranch,
     executeManualRun: options.executeManualRun ?? createDirectManualRunExecutor({ dataRoot: config.dataRoot })
   });
 

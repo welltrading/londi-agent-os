@@ -3,7 +3,8 @@ import { getPipelineTemplate } from '@londi-agent-os/contracts';
 import { createClaudeCodeAdapter, createCodexAdapter } from '@londi-agent-os/adapters';
 import { createPipelineApprovalGate, decidePipelineApprovalGate } from './approvals.js';
 import { createAttemptProcessManager } from './process-manager.js';
-import { createInMemoryWorkspaceLockStore, createRunWorkspace } from './workspace-manager.js';
+import { createInMemoryWorkspaceLockStore, createRunWorkspace, releaseRunWorkspace } from './workspace-manager.js';
+import { RECOVERY_ACTIONS } from './restart-recovery.js';
 
 const DIRECT_MANUAL_AGENT_IDS = Object.freeze(['codex', 'claude-code']);
 
@@ -38,7 +39,10 @@ export function createDirectManualRunExecutor({
     if (typeof factory !== 'function') return { status: run?.status ?? 'running', execution };
     const adapter = factory({ processManager });
     const heartbeat = await adapter.heartbeat({ attemptId });
-    if (heartbeat?.outcome !== 'success') return { status: run?.status ?? 'running', execution };
+    // A non-success heartbeat means the attempt is no longer supervised by this process — the
+    // usual cause is a service restart. The run must not stay `running` forever, and we must not
+    // fabricate a success we cannot observe.
+    if (heartbeat?.outcome !== 'success') return reconcileUnsupervisedRun({ run, execution, reason: heartbeat?.data?.reason ?? 'attempt-not-supervised' });
     const attempt = heartbeat.data?.attempt ?? execution?.attempts?.execute ?? null;
     const nextExecution = { ...(execution ?? {}), attempts: { ...(execution?.attempts ?? {}), execute: safeAttempt(attempt) } };
     if (heartbeat.data?.alive === true || attempt?.status === 'Running') return { status: 'running', execution: nextExecution };
@@ -46,11 +50,36 @@ export function createDirectManualRunExecutor({
       const verification = verifyWorkspaceChanges(nextExecution.workspace?.worktreePath);
       const verifiedExecution = { ...nextExecution, verification };
       if (verification.changedFiles.length === 0) {
-        return { status: 'failed', error: 'Agent exited successfully but produced no workspace changes.', execution: verifiedExecution };
+        return { status: 'failed', error: 'Agent exited successfully but produced no workspace changes.', execution: finishWorkspace(verifiedExecution, run?.id, false) };
       }
-      return { status: 'succeeded', execution: verifiedExecution };
+      return { status: 'succeeded', execution: finishWorkspace(verifiedExecution, run?.id, true) };
     }
-    return { status: 'failed', error: 'Direct manual run process exited unsuccessfully.', execution: nextExecution };
+    return { status: 'failed', error: 'Direct manual run process exited unsuccessfully.', execution: finishWorkspace(nextExecution, run?.id, false) };
+  }
+
+  function reconcileUnsupervisedRun({ run, execution, reason }) {
+    if (run?.status !== 'running' && run?.status !== 'queued') return { status: run?.status ?? 'running', execution };
+    const recovery = {
+      state: 'Recovery Required',
+      reason,
+      autoResume: false,
+      actions: [...RECOVERY_ACTIONS],
+      detectedAt: now()
+    };
+    return {
+      status: 'failed',
+      error: 'Run attempt is no longer supervised after restart; recovery decision required.',
+      execution: finishWorkspace({ ...(execution ?? {}), recovery }, run?.id, true)
+    };
+  }
+
+  // Terminal states always release the workspace lock. The worktree/branch are retained whenever
+  // they may hold agent work (manual merge is the only path); they are removed only when the run
+  // produced nothing.
+  function finishWorkspace(execution, runId, retain) {
+    if (!execution?.workspace) return execution;
+    const release = releaseRunWorkspace({ workspace: execution.workspace, runId, lockStore, retain });
+    return { ...execution, workspaceRelease: release };
   }
 
   async function executeDirectManualRun({ run, input = {}, project } = {}) {
@@ -143,19 +172,20 @@ export function createDirectManualRunExecutor({
             attempt: safeAttempt(attempt)
           });
         }
-        return { status: 'succeeded', summary: run.summary, artifactPath: null, execution };
+        return { status: 'succeeded', summary: run.summary, artifactPath: null, execution: finishWorkspace(execution, run.id, true) };
       }
       throw new DirectManualRunExecutionError('Direct manual run process exited unsuccessfully.', {
         execution,
         attempt: safeAttempt(attempt)
       });
     } catch (error) {
+      const releasedExecution = finishWorkspace(execution, run?.id, hasAgentChanges(execution));
       if (error instanceof DirectManualRunExecutionError) {
-        if (!error.details.execution) error.details.execution = execution;
+        error.details.execution = releasedExecution;
         throw error;
       }
       throw new DirectManualRunExecutionError(error?.message ?? 'Direct manual run execution failed.', {
-        execution,
+        execution: releasedExecution,
         causeCode: error?.code ?? null
       });
     }
@@ -167,7 +197,7 @@ export function createDirectManualRunExecutor({
 
 function verifyWorkspaceChanges(worktreePath) {
   if (!worktreePath) return { changedFiles: [] };
-  const result = spawnSync('git', ['status', '--short'], { cwd: worktreePath, encoding: 'utf8' });
+  const result = spawnSync('git', ['status', '--porcelain=v1', '--untracked-files=normal'], { cwd: worktreePath, encoding: 'utf8' });
   if (result.status !== 0) {
     throw new DirectManualRunExecutionError('Workspace change verification failed.', {
       worktreePath,
@@ -177,11 +207,23 @@ function verifyWorkspaceChanges(worktreePath) {
   }
   const changedFiles = result.stdout
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => ({ status: line.slice(0, 2).trim(), path: line.slice(3).trim() }))
+    // Porcelain v1 lines are `XY <path>`: the status field is fixed-width, so the raw line must
+    // not be trimmed before slicing or the first character of the path is lost.
+    .filter((line) => line.length > 3)
+    .map((line) => ({ status: line.slice(0, 2).trim(), path: normalizeStatusPath(line.slice(3)) }))
     .filter((entry) => isAgentProducedChange(entry.path));
   return { changedFiles };
+}
+
+function normalizeStatusPath(value) {
+  // Renames/copies render as `old -> new`; report the resulting path. Git quotes paths that
+  // contain special characters.
+  const path = String(value).includes(' -> ') ? String(value).split(' -> ').pop() : String(value);
+  return path.replace(/^"(.*)"$/, '$1');
+}
+
+function hasAgentChanges(execution) {
+  return (execution?.verification?.changedFiles?.length ?? 0) > 0;
 }
 
 function isAgentProducedChange(filePath) {

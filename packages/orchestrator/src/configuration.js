@@ -13,6 +13,7 @@ export function ensureApprovedDataDirectories(config) {
     config.paths.obsidianSnapshots,
     dirname(config.paths.database)
   ]);
+  if (config.paths.projects) directories.add(config.paths.projects);
 
   for (const directory of directories) mkdirSync(directory, { recursive: true });
   return [...directories].sort();

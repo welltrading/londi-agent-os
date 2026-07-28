@@ -18,6 +18,8 @@ import {
   createServiceAccountIsolationPolicy,
   deriveRunBranchName,
   deriveRunWorktreePath,
+  detectDefaultBranch,
+  releaseRunWorkspace,
   simulateWorkspaceWrite,
   validateGitProject
 } from '../packages/orchestrator/src/index.js';
@@ -64,9 +66,18 @@ try {
   git(repo, ['commit', '-m', 'dirty committed']);
   const lifecycleLockStore = createInMemoryWorkspaceLockStore();
   const manifest = createRunWorkspace({ repositoryPath: repo, targetBranch: 'main', runId: 'abcdef1234567890', dataRoot: join(root, 'data'), lockStore: lifecycleLockStore });
-  assert.equal(manifest.branchName, 'londi/run-abcdef123456');
+  assert.equal(manifest.branchName, 'londi/run-abcdef1234567890');
   assert.equal(manifest.worktreePath, deriveRunWorktreePath({ dataRoot: join(root, 'data'), runId: 'abcdef1234567890' }));
-  assert.equal(deriveRunBranchName('ABCDEF_1234567890'), 'londi/run-abcdef-12345');
+  assert.equal(deriveRunBranchName('ABCDEF_1234567890'), 'londi/run-abcdef-1234567890');
+
+  // Two manual runs created on the same day must not collapse onto one branch name.
+  assert.notEqual(
+    deriveRunBranchName('run-20260722155314-host-codex-manual-smoke'),
+    deriveRunBranchName('run-20260722155729-host-codex-manual-smoke')
+  );
+  assert.equal(deriveRunBranchName('run-20260722155314-smoke'), 'londi/run-20260722155314-smoke');
+  assert.equal(detectDefaultBranch({ repositoryPath: repo }), 'main');
+  assert.equal(detectDefaultBranch({ repositoryPath: join(root, 'missing-repo') }), null);
   assert.equal(existsSync(manifest.worktreePath), true);
   assert.equal(JSON.parse(readFileSync(join(manifest.worktreePath, 'londi-workspace-manifest.json'), 'utf8')).baseCommit, manifest.baseCommit);
   assert.equal(JSON.parse(readFileSync(join(manifest.worktreePath, 'londi-workspace-manifest.json'), 'utf8')).targetBranch, 'main');
@@ -74,6 +85,24 @@ try {
     () => createRunWorkspace({ repositoryPath: repo, targetBranch: 'main', runId: 'abcdef1234567890', dataRoot: join(root, 'data') }),
     /already exists|already registered/
   );
+
+  // Retained release frees the lock but keeps agent work available for manual merge.
+  assert.equal(lifecycleLockStore.list().length, 1);
+  const retained = releaseRunWorkspace({ workspace: manifest, runId: 'abcdef1234567890', lockStore: lifecycleLockStore, retain: true });
+  assert.equal(retained.lockReleased, true);
+  assert.equal(retained.retained, true);
+  assert.equal(retained.worktreeRemoved, false);
+  assert.equal(existsSync(manifest.worktreePath), true);
+  assert.equal(lifecycleLockStore.list().length, 0);
+
+  // Non-retained release cleans up the stale worktree and run branch.
+  const throwaway = createRunWorkspace({ repositoryPath: repo, targetBranch: 'main', runId: 'run-cleanup-1', dataRoot: join(root, 'data'), lockStore: lifecycleLockStore });
+  const cleaned = releaseRunWorkspace({ workspace: throwaway, runId: 'run-cleanup-1', lockStore: lifecycleLockStore });
+  assert.equal(cleaned.lockReleased, true);
+  assert.equal(cleaned.worktreeRemoved, true);
+  assert.equal(cleaned.branchRemoved, true);
+  assert.equal(existsSync(throwaway.worktreePath), false);
+  assert.notEqual(spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${throwaway.branchName}`], { cwd: repo }).status, 0);
 
   const vaultRoot = join(root, 'vault');
   const systemRoot = join(root, 'system');

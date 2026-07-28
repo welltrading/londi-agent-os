@@ -17,7 +17,9 @@ Local UI shell and dashboard/client-state models.
 - UI models consume contracts and API descriptors; they do not execute system commands.
 - UI must not call local CLIs, access secrets, or write Obsidian directly.
 - Project-based work should display `ProjectWorkspace` with all four agents when relevant.
-- Phase 2 dashboard must expose agents, skills, projects, a read-only Project Browser snapshot, runs, refresh, Obsidian Run Summary action model, and the manual New Run chat composer with per-conversation agent selector for the Run Console slice.
+- Phase 2 dashboard must expose agents, skills, projects, a read-only Project Browser snapshot, runs, refresh, Obsidian Run Summary action model, and the manual New Run chat composer with per-conversation agent and project selectors for the Run Console slice.
+- The composer sends `projectId` with every manual run and never offers a branch input; the target branch comes from the project's stored default branch. Sending to an executing agent (`codex`, `claude-code`) without a selected project must be blocked with a readable error, never sent silently. The chosen agent and project must survive the re-render after Send/Refresh.
+- `runtime-dashboard.html` must never contain a bearer token. It carries the `%%LONDI_LOCAL_API_TOKEN%%` placeholder that the local dashboard server replaces per response.
 - Phase 2 DOM binding may mount static dashboard HTML into a provided target and bind dispatch-only controls/form values, but it must not call Local API, HostConnector, CLIs, secrets, filesystem, or Obsidian directly.
 - Runtime Dashboard app code should stay a thin wrapper around bootstrap + DOM binder; apply the PONYTAIL minimalism gate before adding files, abstractions, or dependencies.
 

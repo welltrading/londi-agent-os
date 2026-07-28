@@ -1,13 +1,15 @@
+import { randomBytes } from 'node:crypto';
 import { listSupportedPipelineTemplates } from '@londi-agent-os/orchestrator';
 import { loadDefaultLocalConfig } from '@londi-agent-os/contracts';
 import { createServiceLifecycle, getWindowsServiceInstallPlan } from './service-lifecycle.js';
-import { createCredentialManagerTokenProvider } from './auth.js';
+import { LOCAL_API_TOKEN_BYTES, createCredentialManagerTokenProvider } from './auth.js';
 import { createLogger, createRequestId, sanitizeForLog } from './logging.js';
 
 export const LOCAL_API_PACKAGE = '@londi-agent-os/local-api';
 
 export function getHealthModel() {
-  const service = createServiceLifecycle({ security: { tokenProvider: createCredentialManagerTokenProvider('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP_') } });
+  // Health metadata only; the throwaway token keeps a real bearer token out of this source file.
+  const service = createServiceLifecycle({ security: { tokenProvider: createCredentialManagerTokenProvider(randomBytes(LOCAL_API_TOKEN_BYTES).toString('base64url')) } });
   return { packageName: LOCAL_API_PACKAGE, ...service.getHealth(), templates: listSupportedPipelineTemplates() };
 }
 

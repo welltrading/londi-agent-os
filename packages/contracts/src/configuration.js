@@ -7,6 +7,7 @@ export const DEFAULT_LOCAL_CONFIG = Object.freeze({
   paths: Object.freeze({
     database: './data/db/londi-agent-os.sqlite',
     runs: './data/runs',
+    projects: './data/projects',
     worktrees: './data/worktrees',
     backups: './data/backups',
     obsidianSnapshots: './data/obsidian-snapshots'

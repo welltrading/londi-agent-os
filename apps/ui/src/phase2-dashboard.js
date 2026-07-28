@@ -1,5 +1,7 @@
 import { listPhase2AgentCards, listPhase2Skills, createProjectWorkspace, createMinimalRun, createProjectBrowserSnapshot } from '@londi-agent-os/contracts';
 
+export const EXECUTING_AGENT_IDS = Object.freeze(['codex', 'claude-code']);
+
 export class Phase2DashboardError extends Error {
   constructor(message, details = {}) {
     super(message);
@@ -77,7 +79,7 @@ export function createPhase2DashboardViewModel(model = createPhase2DashboardMode
   });
 }
 
-export function createPhase2DashboardInteractionModel(viewModel = createPhase2DashboardViewModel(), { loadingAction = null, lastAction = null, error = null } = {}) {
+export function createPhase2DashboardInteractionModel(viewModel = createPhase2DashboardViewModel(), { loadingAction = null, lastAction = null, error = null, selection = null } = {}) {
   const loading = loadingAction !== null;
   const actionLabel = {
     load: 'Loading dashboard snapshot',
@@ -87,6 +89,7 @@ export function createPhase2DashboardInteractionModel(viewModel = createPhase2Da
   }[loadingAction] ?? (lastAction ? `Last action: ${lastAction}` : 'Ready');
   return deepFreeze({
     ...viewModel,
+    selection: normalizeManualRunSelection(selection ?? viewModel.selection),
     runtime: {
       ready: !loading,
       loading,
@@ -127,7 +130,7 @@ export function createPhase2DashboardScreenModel(interaction = createPhase2Dashb
       section('agents', 'Agent Management', model.agents),
       section('projects', 'Project Workspace', model.projects),
       section('project-browser', 'Project Browser', model.projectBrowser?.entries ?? []),
-      section('new-run', 'New Run', model.runs.slice(-3), { agents: model.agents }),
+      section('new-run', 'New Run', model.runs.slice(-3), { agents: model.agents, projects: model.projects, selection: model.selection ?? normalizeManualRunSelection(null) }),
       section('runs', 'Runs', model.runs),
       section('obsidian', 'Obsidian', [{ label: model.obsidianLabel, tone: model.obsidianTone }]),
       section('skills', 'Skill Registry', model.skills)
@@ -314,10 +317,14 @@ export function createPhase2DashboardDomBinder({ screen, documentRef = globalThi
 
   const createBinderDispatchOptions = (controlId, binding) => {
     const options = createDispatchOptions(controlId, binding) ?? {};
-    if (controlId !== 'create-manual-run') return options;
-    return { ...options, input: readManualRunFormInput() };
+    // Every dispatch carries the current composer selection so the re-render after Send/Refresh
+    // restores the chosen agent and project instead of resetting to the defaults.
+    const withSelection = { ...options, selection: readManualRunFormSelection() };
+    if (controlId !== 'create-manual-run') return withSelection;
+    return { ...withSelection, input: readManualRunFormInput() };
   };
-  const readManualRunFormInput = () => createChatManualRunInput(readFormValue('manual-run-prompt'), readFormValue('manual-run-agent'));
+  const readManualRunFormInput = () => createChatManualRunInput(readFormValue('manual-run-prompt'), readFormValue('manual-run-agent'), readFormValue('manual-run-project'));
+  const readManualRunFormSelection = () => normalizeManualRunSelection({ agentId: readFormValue('manual-run-agent'), projectId: readFormValue('manual-run-project') });
   const readFormValue = (field) => mountedTarget?.querySelector?.(`[data-field="${field}"]`)?.value ?? '';
 
   return Object.freeze({
@@ -351,18 +358,21 @@ export function createPhase2DashboardController({ runtime, createIdempotencyKey 
   if (typeof createIdempotencyKey !== 'function') throw new Phase2DashboardError('Phase 2 dashboard controller requires an idempotency key factory.', { missing: 'createIdempotencyKey' });
 
   let viewModel = runtime.snapshot();
-  let state = { loadingAction: null, lastAction: null, error: null };
+  let state = { loadingAction: null, lastAction: null, error: null, selection: normalizeManualRunSelection(null) };
 
   const snapshot = () => createPhase2DashboardInteractionModel(viewModel, state);
+  const rememberSelection = (options) => {
+    if (options?.selection) state = { ...state, selection: normalizeManualRunSelection(options.selection) };
+  };
   const runAction = async (actionId, operation) => {
-    state = { loadingAction: actionId, lastAction: state.lastAction, error: null };
+    state = { ...state, loadingAction: actionId, error: null };
     try {
       const result = await operation();
       viewModel = result?.dashboard ?? result;
-      state = { loadingAction: null, lastAction: actionId, error: null };
+      state = { ...state, loadingAction: null, lastAction: actionId, error: null };
       return snapshot();
     } catch (error) {
-      state = { loadingAction: null, lastAction: state.lastAction, error };
+      state = { ...state, loadingAction: null, error };
       return snapshot();
     }
   };
@@ -379,7 +389,8 @@ export function createPhase2DashboardController({ runtime, createIdempotencyKey 
       const key = idempotencyKey ?? createIdempotencyKey(input);
       return runAction('write-run-summary', () => runtime.writeRunSummary({ input, idempotencyKey: key }));
     },
-    createManualRun({ input, idempotencyKey } = {}) {
+    createManualRun({ input, idempotencyKey, selection } = {}) {
+      rememberSelection({ selection: selection ?? { agentId: input?.agentId, projectId: input?.projectId } });
       return runAction('create-manual-run', () => {
         const normalizedInput = validateManualRunInput(input);
         const key = idempotencyKey ?? createDashboardIdempotencyKey(normalizedInput, 'manual-run');
@@ -388,11 +399,12 @@ export function createPhase2DashboardController({ runtime, createIdempotencyKey 
       });
     },
     dispatch(controlId, options = {}) {
+      rememberSelection(options);
       if (controlId === 'load') return this.load();
       if (controlId === 'refresh') return this.refresh();
       if (controlId === 'write-run-summary') return this.writeRunSummary(options);
       if (controlId === 'create-manual-run') return this.createManualRun(options);
-      state = { loadingAction: null, lastAction: state.lastAction, error: new Phase2DashboardError('Unknown Phase 2 dashboard control.', { controlId }) };
+      state = { ...state, loadingAction: null, error: new Phase2DashboardError('Unknown Phase 2 dashboard control.', { controlId }) };
       return Promise.resolve(snapshot());
     }
   });
@@ -531,10 +543,16 @@ function renderVisualSections(sections) {
 function renderManualRunForm(sectionItem = { items: [], meta: {} }) {
   const messages = sectionItem.items.length ? sectionItem.items.map(renderChatMessage).join('') : '<p class="phase2-dashboard__chat-empty">Start a new agent note.</p>';
   const agents = sectionItem.meta?.agents?.length ? sectionItem.meta.agents : [{ id: 'agent-zero', name: 'Agent Zero' }];
+  const projects = sectionItem.meta?.projects ?? [];
+  const selection = normalizeManualRunSelection(sectionItem.meta?.selection);
+  // The target branch is never an input: it comes from the project's stored default branch.
+  const projectOptions = [{ id: '', name: projects.length ? 'Select a project…' : 'No registered project' }, ...projects];
   return [
     '<form class="phase2-dashboard__chat" data-form-id="manual-run">',
     '<div class="phase2-dashboard__chat-header"><strong>New chat</strong><label><span>Agent</span><select data-field="manual-run-agent" name="agentId">',
-    agents.map((agent) => `<option value="${escapeHtml(agent.id)}" ${agent.id === 'agent-zero' ? 'selected' : ''}>${escapeHtml(agent.name)}</option>`).join(''),
+    agents.map((agent) => `<option value="${escapeHtml(agent.id)}"${agent.id === selection.agentId ? ' selected' : ''}>${escapeHtml(agent.name)}</option>`).join(''),
+    '</select></label><label><span>Project</span><select data-field="manual-run-project" name="projectId">',
+    projectOptions.map((project) => `<option value="${escapeHtml(project.id)}"${project.id === selection.projectId ? ' selected' : ''}>${escapeHtml(project.name)}</option>`).join(''),
     '</select></label><span>General task</span></div>',
     `<div class="phase2-dashboard__chat-messages" aria-live="polite">${messages}</div>`,
     '<label class="phase2-dashboard__chat-composer"><span>Message</span><textarea data-field="manual-run-prompt" name="prompt" rows="3" placeholder="כתוב בקשה..." required></textarea></label>',
@@ -553,7 +571,7 @@ function stripManualChatSummary(value) {
   return String(value ?? '').replace(/^Manual (Ask Agent Zero|[a-z0-9._-]+) chat message:\s*/i, '');
 }
 
-function createChatManualRunInput(promptValue, agentIdValue = 'agent-zero') {
+function createChatManualRunInput(promptValue, agentIdValue = 'agent-zero', projectIdValue = '') {
   const prompt = String(promptValue ?? '').trim();
   const agentId = String(agentIdValue ?? 'agent-zero').trim() || 'agent-zero';
   const title = prompt.split(/\s+/).slice(0, 8).join(' ') || 'New agent chat';
@@ -561,7 +579,15 @@ function createChatManualRunInput(promptValue, agentIdValue = 'agent-zero') {
     title,
     prompt,
     summary: prompt ? `Manual ${agentId} chat message: ${prompt}` : '',
-    agentId
+    agentId,
+    projectId: String(projectIdValue ?? '').trim() || null
+  };
+}
+
+export function normalizeManualRunSelection(selection) {
+  return {
+    agentId: String(selection?.agentId ?? 'agent-zero').trim() || 'agent-zero',
+    projectId: String(selection?.projectId ?? '').trim()
   };
 }
 
@@ -600,10 +626,17 @@ function control(id, label, disabled, loading, description, options = {}) {
 function validateManualRunInput(input = {}) {
   const prompt = String(input.prompt ?? '').trim();
   const agentId = String(input.agentId ?? 'agent-zero').trim() || 'agent-zero';
+  const projectId = String(input.projectId ?? '').trim();
   const title = String(input.title ?? '').trim() || prompt.split(/\s+/).slice(0, 8).join(' ') || 'New agent chat';
   const summary = String(input.summary ?? '').trim() || (prompt ? `Manual ${agentId} chat message: ${prompt}` : '');
   if (!prompt) throw new Phase2DashboardError('Message required.');
-  return { title, prompt, summary, agentId };
+  // The executing agents run inside a Git worktree, so they cannot start without a registered
+  // project. Block here with a readable message rather than sending a run that the Direct
+  // pipeline would only reject later.
+  if (EXECUTING_AGENT_IDS.includes(agentId) && !projectId) {
+    throw new Phase2DashboardError(`Select a project before sending to ${agentId}. ${agentId} runs inside a registered Git project.`, { agentId, missing: 'projectId' });
+  }
+  return { title, prompt, summary, agentId, projectId: projectId || null };
 }
 
 function toneForAgentStatus(status) {

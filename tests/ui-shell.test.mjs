@@ -149,11 +149,12 @@ assert.match(runtimePreview, /No polling|אין polling/);
 
 const runtimeEntrypoint = readFileSync('apps/ui/runtime-dashboard.html', 'utf8');
 assert.match(runtimeEntrypoint, /createRuntimeDashboardApp/);
-assert.match(runtimeEntrypoint, /npm run serve:runtime-dashboard/);
-assert.match(runtimeEntrypoint, /Use local dev token/);
 assert.match(runtimeEntrypoint, /LOCAL_DEV_HOSTS = new Set\(\['127\.0\.0\.1', 'localhost'\]\)/);
-assert.match(runtimeEntrypoint, /localDevTokenButton.hidden = !LOCAL_DEV_HOSTS.has\(window.location.hostname\)/);
-assert.match(runtimeEntrypoint, /Token remains hidden/);
+// The entrypoint carries a placeholder, never a bearer token: the local dashboard server
+// substitutes the process-scoped token into that one response.
+assert.match(runtimeEntrypoint, /%%LONDI_LOCAL_API_TOKEN%%/);
+assert.doesNotMatch(runtimeEntrypoint, /(?:token|bearer)\s*[:=]\s*['"][A-Za-z0-9_-]{32,}['"]/i);
+assert.doesNotMatch(runtimeEntrypoint, /LOCAL_DEV_TOKEN\s*=/);
 assert.doesNotMatch(runtimeEntrypoint, /createPhase2DashboardDomBinder/);
 
 const runtimeServeScript = readFileSync('scripts/serve-runtime.mjs', 'utf8');

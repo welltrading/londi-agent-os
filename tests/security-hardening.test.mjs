@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   SECURITY_ALLOWED_LOCAL_BIND,
   SECURITY_REQUIRED_TOKEN_BITS,
@@ -40,6 +41,22 @@ try {
   assert.equal(dirtyCorpus.passed, false);
   assert.equal(dirtyCorpus.findings[0].severity, 'Critical');
   rmSync(join(root, 'leak.txt'), { force: true });
+
+  // Source hygiene must read HTML too: the runtime dashboard entrypoint is served verbatim to the
+  // browser, so a bearer token embedded there ships to every viewer.
+  const hygieneRoot = mkdtempSync(join(tmpdir(), 'londi-hygiene-html-'));
+  try {
+    const hygieneScript = resolve('scripts/check-source-hygiene.mjs');
+    writeFileSync(join(hygieneRoot, 'clean.html'), '<script>const INJECTED = "%%LONDI_LOCAL_API_TOKEN%%";</script>');
+    assert.equal(spawnSync(process.execPath, [hygieneScript], { cwd: hygieneRoot, encoding: 'utf8' }).status, 0);
+
+    writeFileSync(join(hygieneRoot, 'leaky.html'), `<script>const LOCAL_DEV_TOKEN = '${'a'.repeat(43)}';</script>`);
+    const leaky = spawnSync(process.execPath, [hygieneScript], { cwd: hygieneRoot, encoding: 'utf8' });
+    assert.notEqual(leaky.status, 0, 'hygiene must fail on a hard-coded bearer token in HTML');
+    assert.match(leaky.stderr, /hard-coded bearer token in HTML/);
+  } finally {
+    rmSync(hygieneRoot, { recursive: true, force: true });
+  }
 
   const dependencyScan = evaluateDependencyScan({ packageLock: { lockfileVersion: 3, packages: {} }, npmAudit: { vulnerabilities: {} } });
   assert.equal(dependencyScan.passed, true);

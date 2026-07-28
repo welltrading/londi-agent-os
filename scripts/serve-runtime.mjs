@@ -1,11 +1,14 @@
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { assertValidLocalApiToken } from '../apps/local-api/src/auth.js';
+import { LOCAL_API_TOKEN_BYTES, assertValidLocalApiToken } from '../apps/local-api/src/auth.js';
 import { sanitizeForLog } from '../apps/local-api/src/logging.js';
 
 const root = resolve(process.cwd());
-const token = process.env.LONDI_AGENT_OS_LOCAL_API_TOKEN ?? '';
+// Without a supplied token, mint one for this process only. It is passed to the two children in
+// their environment and is never printed or written to disk.
+const token = process.env.LONDI_AGENT_OS_LOCAL_API_TOKEN || randomBytes(LOCAL_API_TOKEN_BYTES).toString('base64url');
 const apiUrl = 'http://127.0.0.1:3210/api/v1';
 const uiUrl = 'http://127.0.0.1:3211/';
 const entrypoint = join(root, 'apps/ui/runtime-dashboard.html');
@@ -24,11 +27,11 @@ const children = new Set();
 let shuttingDown = false;
 
 startChild('local-api', ['node', ['apps/local-api/src/index.js', '--service'], { env: { ...process.env, LONDI_AGENT_OS_LOCAL_API_TOKEN: token } }]);
-startChild('runtime-dashboard-ui', ['node', ['scripts/serve-runtime-dashboard.mjs'], { env: process.env }]);
+startChild('runtime-dashboard-ui', ['node', ['scripts/serve-runtime-dashboard.mjs'], { env: { ...process.env, LONDI_AGENT_OS_LOCAL_API_TOKEN: token } }]);
 
 console.log(`Runtime dashboard UI: ${uiUrl}`);
 console.log(`Local API: ${apiUrl}`);
-console.log('Paste the bearer token from your shell/Credential Manager into the browser field. The token is not printed.');
+console.log('The dashboard authenticates automatically over loopback. The token is not printed or stored.');
 
 process.once('SIGINT', () => shutdown('SIGINT'));
 process.once('SIGTERM', () => shutdown('SIGTERM'));

@@ -43,8 +43,11 @@ try {
   assert.equal(uiRoot.headers.get('content-type'), 'text/html; charset=utf-8');
   const uiHtml = await uiRoot.text();
   assert.match(uiHtml, /createRuntimeDashboardApp/);
-  assert.match(uiHtml, /Use local dev token/);
-  assert.equal(uiHtml.includes(TOKEN), true, 'dev token is present only in localhost static dev entrypoint');
+  // The token reaches the browser only through this loopback response, and it is never cached.
+  assert.equal(uiRoot.headers.get('cache-control'), 'no-store');
+  assert.equal(uiHtml.includes(TOKEN), true, 'the process token is injected into the entrypoint response');
+  assert.equal(uiHtml.includes('%%LONDI_LOCAL_API_TOKEN%%'), false, 'the placeholder is replaced');
+  assert.equal(readFileSync('apps/ui/runtime-dashboard.html', 'utf8').includes(TOKEN), false, 'no token is stored on disk');
 
   const uiJs = await fetch(`http://127.0.0.1:${UI_PORT}/apps/ui/src/index.js?v=runtime-dashboard-entry-1`);
   assert.equal(uiJs.status, 200);
@@ -127,7 +130,7 @@ async function postJson(path, body, headers, idempotencyKey) {
 async function startRuntimeDashboardServer() {
   const child = spawn('node', ['scripts/serve-runtime-dashboard.mjs'], {
     cwd: resolve('.'),
-    env: { ...process.env, LONDI_AGENT_OS_UI_PORT: String(UI_PORT) },
+    env: { ...process.env, LONDI_AGENT_OS_UI_PORT: String(UI_PORT), LONDI_AGENT_OS_LOCAL_API_TOKEN: TOKEN },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   const output = [];

@@ -14,6 +14,8 @@ export const PHASE2_SKILL_IDS = Object.freeze([
 ]);
 export const PHASE2_ACTIVE_SKILL_IDS = Object.freeze(['obsidian-run-summary', 'local-agent-status', 'usage-status-refresh']);
 export const PHASE2_PROJECT_STATUSES = Object.freeze(['active', 'paused', 'archived']);
+export const PHASE2_RUN_STATUSES = Object.freeze(['queued', 'idle', 'running', 'succeeded', 'failed']);
+export const PHASE2_DEFAULT_TARGET_BRANCHES = Object.freeze(['main', 'master']);
 export const PHASE2_PROJECT_BROWSER_ENTRY_TYPES = Object.freeze(['directory', 'file']);
 export const OBSIDIAN_RUN_SUMMARY_TARGET_FOLDER = 'Londi Agent OS/Runs/';
 
@@ -90,7 +92,7 @@ export function normalizeAgentUsage(usage = {}) {
   });
 }
 
-export function createProjectWorkspace({ id, name, rootPath, status = 'active', agentIds = PHASE2_AGENT_IDS, skillIds = PHASE2_ACTIVE_SKILL_IDS, doxPath = 'AGENTS.md', contextRoot = 'context/', decisionsLogPath = 'decisions/log.md', createdAt, updatedAt } = {}) {
+export function createProjectWorkspace({ id, name, rootPath, targetBranch = null, status = 'active', agentIds = PHASE2_AGENT_IDS, skillIds = PHASE2_ACTIVE_SKILL_IDS, doxPath = 'AGENTS.md', contextRoot = 'context/', decisionsLogPath = 'decisions/log.md', createdAt, updatedAt } = {}) {
   if (!id || typeof id !== 'string') throw new Phase2RuntimeContractError('Project workspace requires id.');
   if (!name || typeof name !== 'string') throw new Phase2RuntimeContractError('Project workspace requires name.');
   assertOneOf(status, PHASE2_PROJECT_STATUSES, 'project status');
@@ -102,6 +104,7 @@ export function createProjectWorkspace({ id, name, rootPath, status = 'active', 
     id: sanitizeSlug(id),
     name: sanitizeText(name),
     rootPath: rootPath ? sanitizeText(rootPath) : null,
+    targetBranch: targetBranch ? sanitizeText(targetBranch) : null,
     status,
     agentIds: uniqueAgentIds,
     skillIds: uniqueSkillIds,
@@ -140,7 +143,7 @@ export function createMinimalRun({ id, title, projectId = null, agentId = 'agent
   if (!id || !title) throw new Phase2RuntimeContractError('Minimal run requires id and title.');
   assertOneOf(agentId, PHASE2_AGENT_IDS, 'run agent id');
   assertOneOf(skillId, PHASE2_SKILL_IDS, 'run skill id');
-  assertOneOf(status, ['idle', 'running', 'succeeded', 'failed'], 'run status');
+  assertOneOf(status, PHASE2_RUN_STATUSES, 'run status');
   return deepFreeze({ id: sanitizeSlug(id), title: sanitizeText(title), projectId: projectId ? sanitizeSlug(projectId) : null, agentId, skillId, status, summary: sanitizeText(summary), artifactPath: artifactPath ? sanitizeText(artifactPath) : null, lastUpdated, createdAt, error: error ? sanitizeText(error) : null });
 }
 
@@ -150,7 +153,7 @@ export function createManualRunRecord({ id, title, prompt, summary, status = 'qu
   assertOneOf(status, ['queued', 'running', 'succeeded', 'failed'], 'manual run status');
   assertOneOf(agentId, PHASE2_AGENT_IDS, 'manual run agent id');
   return deepFreeze({
-    ...createMinimalRun({ id, title, projectId, agentId, skillId: 'orchestration-control', status: status === 'queued' ? 'idle' : status, summary, artifactPath, createdAt, lastUpdated, error }),
+    ...createMinimalRun({ id, title, projectId, agentId, skillId: 'orchestration-control', status, summary, artifactPath, createdAt, lastUpdated, error }),
     status,
     type: 'manual',
     action: `ask-${agentId}-general-task`,

@@ -19,6 +19,7 @@ import {
   assertProjectHasAllAgents,
   Phase2DashboardError
 } from '../apps/ui/src/index.js';
+import { createManualRunRecord, listPhase2AgentCards, listPhase2Skills } from '../packages/contracts/src/index.js';
 
 const dashboard = createPhase2DashboardModel({
   generatedAt: '2026-07-14T18:00:00.000Z',
@@ -169,14 +170,27 @@ const manualController = createPhase2DashboardController({
     }
   }
 });
-const manualInteraction = await manualController.dispatch('create-manual-run', { input: { prompt: 'Build the chat composer', agentId: 'codex' } });
+const manualInteraction = await manualController.dispatch('create-manual-run', { input: { prompt: 'Build the chat composer', agentId: 'codex', projectId: 'londi-agent-os' } });
 assert.equal(manualInteraction.runtime.lastAction, 'create-manual-run');
 assert.equal(controllerCalls.at(-1)[1].input.title, 'Build the chat composer');
 assert.equal(controllerCalls.at(-1)[1].input.agentId, 'codex');
+assert.equal(controllerCalls.at(-1)[1].input.projectId, 'londi-agent-os');
 assert.equal(controllerCalls.at(-1)[1].input.summary, 'Manual codex chat message: Build the chat composer');
 assert.equal(controllerCalls.at(-1)[1].idempotencyKey, 'phase2-dashboard-build-the-chat-composer-manual-run');
 const missingMessage = await manualController.dispatch('create-manual-run', { input: { prompt: '   ' } });
 assert.equal(missingMessage.runtime.error, 'Message required.');
+
+// Executing agents must be blocked with a readable error when no project is selected, and the
+// chosen agent/project must survive the post-dispatch re-render.
+const missingProject = await manualController.dispatch('create-manual-run', { input: { prompt: 'Run this', agentId: 'codex' } });
+assert.match(missingProject.runtime.error, /Select a project before sending to codex/);
+assert.equal(missingProject.selection.agentId, 'codex');
+assert.equal(controllerCalls.at(-1)[0], 'createManualRun');
+const agentZeroWithoutProject = await manualController.dispatch('create-manual-run', { input: { prompt: 'Note this', agentId: 'agent-zero' } });
+assert.equal(agentZeroWithoutProject.runtime.error, null);
+const preserved = await manualController.dispatch('refresh', { selection: { agentId: 'claude-code', projectId: 'londi-agent-os' } });
+assert.equal(preserved.selection.agentId, 'claude-code');
+assert.equal(preserved.selection.projectId, 'londi-agent-os');
 const unknownInteraction = await controller.dispatch('missing-control');
 assert.equal(unknownInteraction.runtime.error, 'Unknown Phase 2 dashboard control.');
 assert.throws(() => createPhase2DashboardController({ runtime: {} }), Phase2DashboardError);
@@ -228,7 +242,7 @@ assert.equal(mounted.renderPolicy.noPolling, true);
 assert.equal(rootNode.innerHTML.includes('data-shell-id="phase2-dashboard-shell"'), true);
 assert.equal(rootNode.innerHTML.includes('phase2-dashboard__chat-composer'), true);
 await rootNode.querySelector('[data-control-id="refresh"]').click();
-assert.deepEqual(screenCalls.at(-1), ['dom', 'refresh', { source: 'dom-binder', controlId: 'refresh', bindingEvent: 'click' }]);
+assert.deepEqual(screenCalls.at(-1), ['dom', 'refresh', { source: 'dom-binder', controlId: 'refresh', bindingEvent: 'click', selection: { agentId: 'agent-zero', projectId: '' } }]);
 assert.equal('event' in screenCalls.at(-1)[2], false);
 assert.equal(rootNode.innerHTML.includes('Last action: refresh'), true);
 const unmounted = binder.unmount();
@@ -318,6 +332,49 @@ assert.equal(runtimeWrite.run.id, 'run-2');
 assert.equal(runtimeWrite.dashboard.runs.find((run) => run.id === 'run-2').tone, 'green');
 assert.equal(runtimeWrite.dashboard.metrics.find((item) => item.id === 'runs').value, 2);
 assert.equal(calls.at(-1).options.headers['x-request-id'], 'phase2-runtime-test-run-summary');
+
+// Regression: a manual run persisted as `queued` (service stopped between the record write and
+// execution) must stay renderable. Before this, `createMinimalRun` rejected `queued` and every
+// Load/Refresh threw `Invalid run status`, permanently bricking the dashboard.
+const queuedRun = createManualRunRecord({
+  id: 'run-20260728073013-queued',
+  title: 'Queued manual run',
+  prompt: 'Do the thing',
+  summary: 'Manual codex chat message: Do the thing',
+  status: 'queued',
+  agentId: 'codex',
+  projectId: 'londi-agent-os',
+  createdAt: '2026-07-28T07:30:13.000Z'
+});
+assert.equal(queuedRun.status, 'queued');
+const queuedModel = createPhase2DashboardModel({ runs: [queuedRun] });
+assert.equal(queuedModel.runs[0].status, 'queued');
+assert.equal(createPhase2DashboardViewModel(queuedModel).runs[0].tone, 'neutral');
+assert.equal(createPhase2DashboardScreenModel(createPhase2DashboardInteractionModel(createPhase2DashboardViewModel(queuedModel))).sections.find((item) => item.id === 'runs').items.length, 1);
+
+const queuedJson = (data) => ({ status: 200, json: async () => ({ data }) });
+const queuedFetch = async (url) => {
+  if (url.endsWith('/runs')) return queuedJson([queuedRun]);
+  if (url.includes('/agents')) return queuedJson(listPhase2AgentCards());
+  if (url.endsWith('/skills')) return queuedJson(listPhase2Skills());
+  if (url.endsWith('/projects')) return queuedJson([]);
+  return queuedJson({ available: false });
+};
+const queuedRuntime = createPhase2DashboardRuntime({ apiClient, fetchImpl: queuedFetch, now: () => '2026-07-28T07:40:00.000Z' });
+assert.equal((await queuedRuntime.load()).runs[0].status, 'queued');
+assert.equal((await queuedRuntime.refresh()).runs[0].status, 'queued');
+
+// The composer must offer project selection and keep the current agent/project selected.
+const selectionAdapter = createPhase2DashboardVisualAdapter(createPhase2DashboardShellModel(createPhase2DashboardScreenModel(
+  createPhase2DashboardInteractionModel(
+    createPhase2DashboardViewModel(createPhase2DashboardModel({ projects: [{ id: 'londi-agent-os', name: 'Londi Agent OS', rootPath: 'C:/repo', targetBranch: 'master' }] })),
+    { selection: { agentId: 'claude-code', projectId: 'londi-agent-os' } }
+  )
+)));
+assert.match(selectionAdapter.html, /data-field="manual-run-project"/);
+assert.match(selectionAdapter.html, /<option value="claude-code" selected>/);
+assert.match(selectionAdapter.html, /<option value="londi-agent-os" selected>/);
+assert.equal(selectionAdapter.html.includes('manual-run-branch'), false);
 
 console.log('Phase 2 dashboard tests OK');
 

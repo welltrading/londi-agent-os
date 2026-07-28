@@ -254,3 +254,24 @@ Append-only log of significant project decisions.
 - **Evidence:** The Local API now awaits HostConnector execution, and targeted tests cover no-executor `queued`, executor `running`/`succeeded`/`failed`, Direct fast success/failure, and current Codex login-status fallback.
 - **Implication:** The default bridge executes only Codex or Claude Code against a registered Git project in an isolated run branch/worktree, with Gate A approved internally for this MVP and execution metadata stored on the run.
 - **Guardrail:** No Agent Zero/Hermes active adapter, no Obsidian write-back, no automatic merge, and no secret values in execution metadata.
+
+## 2026-07-28 — Manual runs are project-scoped and projects are persisted
+
+- **Decision:** Registered projects persist to `data/projects/projects.json` and hydrate on service start, storing `id`, `name`, `rootPath`, and an automatically detected default branch (`main`/`master` aware). The dashboard composer selects a project per manual run and never exposes a branch input; the run's target branch comes from the stored project.
+- **Evidence:** `node tests/host-connector.test.mjs` covers restart hydration and detected branch; `node tests/phase2-dashboard.test.mjs` covers the project selector, the blocked-send error, and selection survival across re-render; `data/runs/runs.json` recorded six consecutive dashboard runs failing with `Direct manual run requires a registered project root.` before this change.
+- **Implication:** Sending to an executing agent without a selected project is blocked in the UI with a readable error instead of producing a failed run record.
+- **Guardrail:** Project registration stays explicit; no automatic machine scan, no branch entry by hand, and no automatic merge.
+
+## 2026-07-28 — Local dashboard authentication is process-scoped and injected
+
+- **Decision:** Remove the hardcoded dev bearer token from `apps/ui/runtime-dashboard.html`. `npm run serve:runtime` mints a 32-byte URL-safe token when none is supplied, passes it to the Local API and dashboard servers in their environment, and the dashboard server substitutes it into the entrypoint response only, served `no-store`.
+- **Evidence:** `node tests/runtime-live-service.test.mjs` asserts the injected token, the `no-store` header, and that no token exists in the file on disk; `node tests/ui-shell.test.mjs` asserts the entrypoint carries only the placeholder; `node tests/security-hardening.test.mjs` proves source hygiene now fails on a bearer token embedded in HTML.
+- **Implication:** The repository no longer ships a working credential, and the operator needs no console, localStorage, or manual token copying on loopback.
+- **Guardrail:** The token is never printed or persisted; only the loopback entrypoint response carries it, and non-localhost hosts keep the manual connection form.
+
+## 2026-07-28 — Unsupervised run attempts reconcile to Recovery Required
+
+- **Decision:** When a refresh finds a manual run whose attempt is no longer supervised — normally after a service restart — reconcile it to a terminal failure carrying `execution.recovery.state = 'Recovery Required'`, `autoResume: false`, and the `Resume`/`Replace`/`Stop` actions. Terminal states always release the workspace lock; the worktree and run branch are retained whenever the run may hold agent work and removed only when it produced nothing.
+- **Evidence:** `node tests/direct-manual-run-executor.test.mjs` covers restart reconciliation, no re-reconciliation of already-terminal runs, lock release enabling a second run on the same branch, and porcelain path parsing; `node tests/workspace-manager.test.mjs` covers same-day branch uniqueness and retained/cleaned release.
+- **Implication:** A run left `running` across a restart, as `run-20260722155729-host-codex-manual-smoke` was for six days, now resolves to an explicit recovery decision.
+- **Guardrail:** Success is never fabricated for an attempt that cannot be observed, and no merge happens automatically.

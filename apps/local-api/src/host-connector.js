@@ -39,7 +39,9 @@ export function createInMemoryHostConnector({
   projects = [],
   runs = [],
   runsFilePath = 'data/runs/runs.json',
+  projectsFilePath = 'data/projects/projects.json',
   readFile = null,
+  detectDefaultBranch = null,
   executeManualRun = null,
   refreshManualRun = executeManualRun?.refreshRun ?? null
 } = {}) {
@@ -53,6 +55,7 @@ export function createInMemoryHostConnector({
     return [normalized.id, normalized];
   }));
   hydrateRunsFromDisk();
+  hydrateProjectsFromDisk();
 
   return Object.freeze({
     getAgentsStatus(options = {}) {
@@ -111,8 +114,15 @@ export function createInMemoryHostConnector({
     },
 
     upsertProject(project) {
-      const normalized = createProjectWorkspace({ ...project, updatedAt: now(), createdAt: project.createdAt ?? now() });
+      const existing = project?.id ? projectStore.get(String(project.id).toLowerCase()) ?? null : null;
+      const normalized = createProjectWorkspace({
+        ...project,
+        targetBranch: project.targetBranch ?? resolveProjectTargetBranch(project.rootPath) ?? existing?.targetBranch ?? null,
+        updatedAt: now(),
+        createdAt: project.createdAt ?? existing?.createdAt ?? now()
+      });
       projectStore.set(normalized.id, normalized);
+      persistProjectsToDisk();
       return normalized;
     },
 
@@ -208,26 +218,54 @@ export function createInMemoryHostConnector({
   });
 
   function hydrateRunsFromDisk() {
+    readStoreFile(runsFilePath, 'runs', 'Manual runs', (item) => {
+      const normalized = normalizeStoredRun(item);
+      runStore.set(normalized.id, normalized);
+    });
+  }
+
+  function hydrateProjectsFromDisk() {
+    readStoreFile(projectsFilePath, 'projects', 'Projects', (item) => {
+      const normalized = createProjectWorkspace(item);
+      projectStore.set(normalized.id, normalized);
+    });
+  }
+
+  function readStoreFile(filePath, key, label, absorb) {
     if (typeof readFile !== 'function') return;
     try {
-      if (typeof exists === 'function' && !exists(runsFilePath)) return;
-      const parsed = JSON.parse(readFile(runsFilePath, 'utf8'));
-      const items = Array.isArray(parsed) ? parsed : parsed.runs;
+      if (typeof exists === 'function' && !exists(filePath)) return;
+      const parsed = JSON.parse(readFile(filePath, 'utf8'));
+      const items = Array.isArray(parsed) ? parsed : parsed[key];
       if (!Array.isArray(items)) return;
-      for (const item of items) {
-        const normalized = normalizeStoredRun(item);
-        runStore.set(normalized.id, normalized);
-      }
+      for (const item of items) absorb(item);
     } catch (error) {
-      throw new HostConnectorError('Manual runs storage could not be read.', { path: runsFilePath, message: error.message });
+      throw new HostConnectorError(`${label} storage could not be read.`, { path: filePath, message: error.message });
     }
   }
 
-  function persistRunsToDisk() {
+  function writeStoreFile(filePath, payload) {
     if (typeof writeFile !== 'function' || typeof mkdir !== 'function') return;
-    const directory = String(runsFilePath).split(/[\\/]/).slice(0, -1).join('/') || '.';
+    const directory = String(filePath).split(/[\\/]/).slice(0, -1).join('/') || '.';
     mkdir(directory, { recursive: true });
-    writeFile(runsFilePath, `${JSON.stringify({ runs: [...runStore.values()] }, null, 2)}\n`, 'utf8');
+    writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  }
+
+  function persistRunsToDisk() {
+    writeStoreFile(runsFilePath, { runs: [...runStore.values()] });
+  }
+
+  function persistProjectsToDisk() {
+    writeStoreFile(projectsFilePath, { projects: [...projectStore.values()] });
+  }
+
+  function resolveProjectTargetBranch(rootPath) {
+    if (!rootPath || typeof detectDefaultBranch !== 'function') return null;
+    try {
+      return detectDefaultBranch({ repositoryPath: rootPath });
+    } catch {
+      return null;
+    }
   }
 
   function persistManualRun(input) {

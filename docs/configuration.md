@@ -14,6 +14,7 @@ Runtime source of truth:
 | Data root | `./data` |
 | SQLite DB | `./data/db/londi-agent-os.sqlite` |
 | Runs | `./data/runs` |
+| Projects | `./data/projects` |
 | Worktrees | `./data/worktrees` |
 | Backups | `./data/backups` |
 | Obsidian snapshots | `./data/obsidian-snapshots` |

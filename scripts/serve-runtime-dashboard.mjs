@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
@@ -6,6 +6,8 @@ const host = process.env.LONDI_AGENT_OS_UI_HOST || '127.0.0.1';
 const port = Number.parseInt(process.env.LONDI_AGENT_OS_UI_PORT || '3211', 10);
 const root = resolve(process.cwd());
 const entryPath = '/apps/ui/runtime-dashboard.html';
+export const LOCAL_API_TOKEN_PLACEHOLDER = '%%LONDI_LOCAL_API_TOKEN%%';
+const localApiToken = process.env.LONDI_AGENT_OS_LOCAL_API_TOKEN || '';
 
 if (process.argv.includes('--check')) {
   assertRuntimeDashboardEntrypoint();
@@ -27,6 +29,14 @@ const server = createServer((request, response) => {
 
   if (!existsSync(filePath) || !statSync(filePath).isFile()) {
     write(response, 404, 'Not found');
+    return;
+  }
+
+  // The entrypoint is the only response that carries the token, and it is never cached.
+  if (filePath === join(root, normalize(entryPath))) {
+    const html = readFileSync(filePath, 'utf8').replace(LOCAL_API_TOKEN_PLACEHOLDER, localApiToken);
+    response.writeHead(200, { 'content-type': contentType(filePath), 'cache-control': 'no-store', pragma: 'no-cache' });
+    response.end(html);
     return;
   }
 

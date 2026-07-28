@@ -17,11 +17,13 @@ try {
     writeFile: writeFileSync,
     joinPath: join,
     runsFilePath: join(temp, 'runs', 'runs.json'),
+    projectsFilePath: join(temp, 'projects', 'projects.json'),
     readFile: readFileSync,
     readDir: readdirSync,
     stat: statSync,
     resolvePath: resolve,
-    relativePath: relative
+    relativePath: relative,
+    detectDefaultBranch: ({ repositoryPath }) => (repositoryPath ? 'trunk' : null)
   });
 
   assert.equal(HOST_CONNECTOR_CACHE_TTL_MS.agentAvailability, 30_000);
@@ -71,6 +73,7 @@ try {
   assert.equal(persistedRuns[0].prompt, 'Ask Agent Zero to summarize this.');
   const hydratedConnector = createInMemoryHostConnector({
     runsFilePath: join(temp, 'runs', 'runs.json'),
+    projectsFilePath: join(temp, 'projects', 'projects.json'),
     exists: existsSync,
     readFile: readFileSync,
     readDir: readdirSync,
@@ -79,6 +82,11 @@ try {
     relativePath: relative
   });
   assert.equal(hydratedConnector.listRuns()[0].summary, 'Manual summary.');
+  // Registered projects must survive a runtime restart, and must keep the detected default branch.
+  assert.equal(hydratedConnector.listProjects().length, 1);
+  assert.equal(hydratedConnector.listProjects()[0].id, 'client-ai-os');
+  assert.equal(hydratedConnector.listProjects()[0].rootPath, projectRoot);
+  assert.equal(hydratedConnector.listProjects()[0].targetBranch, 'trunk');
 
   const successfulConnector = createInMemoryHostConnector({
     now,

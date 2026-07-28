@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
   DirectManualRunExecutionError,
-  createDirectManualRunExecutor
+  createDirectManualRunExecutor,
+  createInMemoryWorkspaceLockStore
 } from '../packages/orchestrator/src/index.js';
 
 const root = mkdtempSync(join(tmpdir(), 'londi-direct-manual-run-'));
@@ -112,6 +113,64 @@ try {
   assert.equal(refreshResult.status, 'succeeded');
   assert.equal(refreshResult.execution.attempts.execute.exitCode, 0);
   assert.deepEqual(refreshResult.execution.verification.changedFiles, [{ status: '??', path: 'refresh-output.txt' }]);
+
+  // Regression: after a service restart the attempt is no longer supervised, so heartbeat cannot
+  // find it. Previously the run stayed `running` forever; it must now reconcile to a terminal
+  // recovery-required state without fabricating success.
+  const restartExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'restart-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => unsupervisedAdapter() }
+  });
+  const restarted = await restartExecutor.refreshRun({
+    run: {
+      ...manualRun('run-restart-orphan'),
+      status: 'running',
+      execution: {
+        pipeline: 'direct',
+        agentId: 'codex',
+        workspace: null,
+        attempts: { execute: { attemptId: 'run-restart-orphan-execute', pid: 17628, status: 'Running', exitCode: null } }
+      }
+    }
+  });
+  assert.equal(restarted.status, 'failed');
+  assert.match(restarted.error, /no longer supervised/);
+  assert.equal(restarted.execution.recovery.state, 'Recovery Required');
+  assert.equal(restarted.execution.recovery.autoResume, false);
+  assert.deepEqual(restarted.execution.recovery.actions, ['Resume', 'Replace', 'Stop']);
+
+  // An already-terminal run must not be re-reconciled by a later refresh.
+  const terminal = await restartExecutor.refreshRun({
+    run: { ...manualRun('run-restart-orphan'), status: 'succeeded', execution: { agentId: 'codex', attempts: { execute: { attemptId: 'run-restart-orphan-execute' } } } }
+  });
+  assert.equal(terminal.status, 'succeeded');
+
+  // Terminal states release the workspace lock so the next run on the same branch is not blocked.
+  const lockStore = createInMemoryWorkspaceLockStore();
+  const lockExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'lock-data'),
+    settleMs: 0,
+    lockStore,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, writeFileName: 'locked-output.txt' }) }
+  });
+  const lockedSuccess = await lockExecutor({ run: manualRun('run-lock-1'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } });
+  assert.equal(lockedSuccess.status, 'succeeded');
+  assert.equal(lockedSuccess.execution.workspaceRelease.lockReleased, true);
+  assert.equal(lockedSuccess.execution.workspaceRelease.retained, true, 'successful work must be retained for manual merge');
+  assert.equal(lockStore.list().length, 0);
+  const lockedSecond = await lockExecutor({ run: manualRun('run-lock-2'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } });
+  assert.equal(lockedSecond.status, 'succeeded');
+
+  // Regression: `git status` porcelain lines are fixed-width, so a modified tracked file must not
+  // lose the first character of its path (` M README.md` -> `EADME.md`).
+  const modifyExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'modify-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, modifyFileName: 'README.md' }) }
+  });
+  const modified = await modifyExecutor({ run: manualRun('run-modify'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } });
+  assert.deepEqual(modified.execution.verification.changedFiles, [{ status: 'M', path: 'README.md' }]);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
@@ -120,7 +179,17 @@ function manualRun(id) {
   return { id, agentId: 'codex', prompt: 'Update the project safely.', summary: 'Direct manual execution.' };
 }
 
-function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null } = {}) {
+function unsupervisedAdapter() {
+  return {
+    async health() { return { outcome: 'success', data: { healthy: true } }; },
+    async capabilities() { return { outcome: 'success', data: { capabilities: ['code-editing'] } }; },
+    async deliverTask() { return { outcome: 'success', data: { attempt: null } }; },
+    // Matches the real adapter behaviour when the process manager has no record of the attempt.
+    async heartbeat() { return { outcome: 'unknown', data: { alive: false, reason: 'attempt-not-found' } }; }
+  };
+}
+
+function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null, modifyFileName = null } = {}) {
   const attempt = providedAttempt ?? {
     attemptId: null,
     pid: 1234,
@@ -134,6 +203,7 @@ function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt =
     async deliverTask({ attemptId, cwd }) {
       attempt.attemptId = attemptId;
       if (writeFileName) writeFileSync(join(cwd, writeFileName), 'agent produced a real change\n');
+      if (modifyFileName) writeFileSync(join(cwd, modifyFileName), '# Manual run executor\n\nmodified by the agent\n');
       return { outcome: 'success', data: { attempt: { ...attempt } } };
     },
     async heartbeat() { return { outcome: 'success', data: { alive: running, attempt: { ...attempt } } }; }

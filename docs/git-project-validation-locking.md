@@ -23,11 +23,12 @@ This task does not create a branch or worktree yet. Branch/worktree lifecycle st
 
 The Workspace Manager now creates deterministic run branches and worktrees:
 
-- Branch: `londi/run-<run-id-short>` where the normalized run id is capped at 12 characters.
+- Branch: `londi/run-<normalized-run-id>`, capped at 60 characters. The full run id is kept because run ids embed a per-second timestamp; truncating collapsed every run created on the same day onto a single branch name.
 - Worktree: `<dataRoot>/worktrees/<run-id>/`.
 - Manifest: `londi-workspace-manifest.json` is written inside the worktree.
 - Manifest stores `runId`, source repository path, `targetBranch`, `baseCommit`, `branchName`, `worktreePath`, dirty entries and creation time.
 - Existing branch/worktree paths are never reused without verification; lifecycle creation fails with `WorkspaceLifecycleError`.
+- `releaseRunWorkspace()` is called when a run reaches a terminal state. It always releases the workspace lock, so the next run on the same repository/target branch is not blocked. It retains the worktree and run branch whenever the run may hold agent work (every success, and any failure with changed files) because manual merge is the only path forward; it removes the stale worktree and run branch only when the run produced nothing. It never merges.
 
 E2-T02 does not implement ACL isolation, diff snapshots or cleanup retention; those are handled by later E2 tasks.
 

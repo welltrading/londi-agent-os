@@ -445,7 +445,9 @@ export {
   executeWorkspaceCleanupPlan,
   deriveRunBranchName,
   deriveRunWorktreePath,
+  detectDefaultBranch,
   createRunWorkspace,
+  releaseRunWorkspace,
   validateGitProject,
   createInMemoryWorkspaceLockStore,
   classifyWorkspaceValidationError
