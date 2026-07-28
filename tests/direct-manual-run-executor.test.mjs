@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
+  DIRECT_MANUAL_DIAGNOSTIC_TAIL_BYTES,
   DirectManualRunExecutionError,
+  captureDiagnostics,
   createDirectManualRunExecutor,
   createInMemoryWorkspaceLockStore
 } from '../packages/orchestrator/src/index.js';
@@ -162,6 +164,55 @@ try {
   const lockedSecond = await lockExecutor({ run: manualRun('run-lock-2'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } });
   assert.equal(lockedSecond.status, 'succeeded');
 
+  // Regression: the verified live no-op. Codex was refused every write by its default read-only
+  // sandbox, explained itself on stdout, and exited 0. That must stay a failure, and the reason
+  // must survive into the persisted execution metadata instead of being discarded.
+  const blockedOutput = 'patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings';
+  const blockedExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'blocked-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, stdout: blockedOutput }) }
+  });
+  await assert.rejects(
+    () => blockedExecutor({ run: manualRun('run-blocked'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } }),
+    (error) => {
+      assert.equal(error instanceof DirectManualRunExecutionError, true);
+      assert.match(error.message, /produced no workspace changes/);
+      assert.match(error.message, /blocked from writing/);
+      assert.equal(error.details.execution.diagnostics.blocked, true);
+      assert.match(error.details.execution.diagnostics.stdoutTail, /read-only sandbox/);
+      return true;
+    }
+  );
+
+  // Diagnostics must be bounded and redacted: never a full log, never a credential.
+  const secret = `sk-${'a'.repeat(40)}`;
+  const noisy = `${'x'.repeat(DIRECT_MANUAL_DIAGNOSTIC_TAIL_BYTES * 3)} Bearer ${'b'.repeat(50)} token=${secret}`;
+  const bounded = captureDiagnostics({ stdout: noisy, stderr: '' });
+  assert.equal(bounded.truncated, true);
+  assert.equal(bounded.stdoutTail.length <= DIRECT_MANUAL_DIAGNOSTIC_TAIL_BYTES, true, 'tail must be bounded');
+  assert.equal(bounded.stdoutTail.includes(secret), false, 'secret must be redacted');
+  assert.equal(/Bearer\s+b{20,}/.test(bounded.stdoutTail), false, 'bearer token must be redacted');
+  assert.equal(bounded.blocked, false);
+  assert.equal(captureDiagnostics({ stdout: '', stderr: '' }), null, 'no output means no diagnostics object');
+  assert.equal(captureDiagnostics(null), null);
+  // Only the two output streams are persisted — never argv or environment.
+  const envLeak = captureDiagnostics({ stdout: 'ok', stderr: '', env: { SECRET: 'nope' }, args: ['--token', 'nope'] });
+  assert.deepEqual(Object.keys(envLeak).sort(), ['blocked', 'maxBytes', 'stderrTail', 'stdoutTail', 'truncated']);
+  assert.equal(JSON.stringify(envLeak).includes('nope'), false);
+
+  // A writable run still produces a verified change, and its diagnostics ride along.
+  const writableExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'writable-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, writeFileName: 'written-by-agent.txt', stdout: 'apply patch\npatch: completed' }) }
+  });
+  const writable = await writableExecutor({ run: manualRun('run-writable'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } });
+  assert.equal(writable.status, 'succeeded');
+  assert.deepEqual(writable.execution.verification.changedFiles, [{ status: '??', path: 'written-by-agent.txt' }]);
+  assert.match(writable.execution.diagnostics.stdoutTail, /patch: completed/);
+  assert.equal(writable.execution.diagnostics.blocked, false);
+
   // Regression: `git status` porcelain lines are fixed-width, so a modified tracked file must not
   // lose the first character of its path (` M README.md` -> `EADME.md`).
   const modifyExecutor = createDirectManualRunExecutor({
@@ -189,13 +240,15 @@ function unsupervisedAdapter() {
   };
 }
 
-function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null, modifyFileName = null } = {}) {
+function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null, modifyFileName = null, stdout = '', stderr = '' } = {}) {
   const attempt = providedAttempt ?? {
     attemptId: null,
     pid: 1234,
     status: running ? 'Running' : 'Exited',
     exitCode: running ? null : exitCode,
-    signal: null
+    signal: null,
+    stdout,
+    stderr
   };
   return {
     async health() { return { outcome: 'success', data: { healthy: true } }; },

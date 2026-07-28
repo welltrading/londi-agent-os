@@ -4,7 +4,7 @@ export function listSupportedPipelineTemplates() {
   return [...MVP_PIPELINE_TEMPLATES];
 }
 export { ensureApprovedDataDirectories } from './configuration.js';
-export { createDirectManualRunExecutor, DirectManualRunExecutionError } from './direct-manual-run-executor.js';
+export { createDirectManualRunExecutor, DirectManualRunExecutionError, captureDiagnostics, DIRECT_MANUAL_DIAGNOSTIC_TAIL_BYTES } from './direct-manual-run-executor.js';
 export {
   RUN_STATES,
   STEP_STATES,

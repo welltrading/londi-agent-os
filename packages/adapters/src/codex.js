@@ -3,6 +3,11 @@ import { createAdapterDescriptor, normalizeAdapterResult } from './index.js';
 
 export const CODEX_ADAPTER_ID = 'codex';
 export const DEFAULT_CODEX_COMMAND = 'codex';
+// `codex exec` runs with `sandbox: read-only` unless a mode is given, so writes are rejected and
+// the process still exits 0. Runs happen inside an isolated Git worktree, so the workspace scope
+// is the correct one; `danger-full-access` and approval bypass are deliberately not used.
+export const CODEX_EXEC_SANDBOX_MODE = 'workspace-write';
+export const CODEX_FORBIDDEN_SANDBOX_ARGS = Object.freeze(['danger-full-access', '--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust']);
 
 export function createCodexAdapter({
   command = DEFAULT_CODEX_COMMAND,
@@ -73,7 +78,7 @@ export function createCodexAdapter({
       if (!processManager) return adapterTerminalFailure('deliverTask', 'Process manager is required for Codex task delivery.', 'CODEX_PROCESS_MANAGER_REQUIRED');
       if (!prompt) return adapterTerminalFailure('deliverTask', 'Prompt is required for Codex task delivery.', 'CODEX_PROMPT_REQUIRED');
       try {
-        const invocation = resolveInvocation(command, [...args, 'exec', prompt]);
+        const invocation = resolveInvocation(command, [...args, 'exec', '--sandbox', CODEX_EXEC_SANDBOX_MODE, prompt]);
         const attempt = processManager.startAttempt({ attemptId, command: invocation.command, args: invocation.args, cwd, env, spawnOptions: invocation.spawnOptions ?? {} });
         return normalizeAdapterResult({ operation: 'deliverTask', outcome: 'success', data: { attempt: snapshotAttempt(attempt) } });
       } catch (error) {

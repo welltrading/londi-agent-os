@@ -369,4 +369,4 @@ function defaultRequirementWeight(category) {
 }
 
 export { CLAUDE_CODE_ADAPTER_ID, DEFAULT_CLAUDE_CODE_COMMAND, createClaudeCodeAdapter, sanitizeAdapterText } from './claude-code.js';
-export { CODEX_ADAPTER_ID, DEFAULT_CODEX_COMMAND, createCodexAdapter } from './codex.js';
+export { CODEX_ADAPTER_ID, DEFAULT_CODEX_COMMAND, CODEX_EXEC_SANDBOX_MODE, CODEX_FORBIDDEN_SANDBOX_ARGS, createCodexAdapter } from './codex.js';

@@ -1,12 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { getPipelineTemplate } from '@londi-agent-os/contracts';
-import { createClaudeCodeAdapter, createCodexAdapter } from '@londi-agent-os/adapters';
+import { createClaudeCodeAdapter, createCodexAdapter, sanitizeAdapterText } from '@londi-agent-os/adapters';
 import { createPipelineApprovalGate, decidePipelineApprovalGate } from './approvals.js';
 import { createAttemptProcessManager } from './process-manager.js';
 import { createInMemoryWorkspaceLockStore, createRunWorkspace, releaseRunWorkspace } from './workspace-manager.js';
 import { RECOVERY_ACTIONS } from './restart-recovery.js';
 
 const DIRECT_MANUAL_AGENT_IDS = Object.freeze(['codex', 'claude-code']);
+export const DIRECT_MANUAL_DIAGNOSTIC_TAIL_BYTES = 2000;
+// Signals that the agent understood the task but was refused write access. Without these, a
+// blocked run is indistinguishable from an agent that simply chose to do nothing.
+const BLOCKED_OUTPUT_PATTERN = /read-only sandbox|patch rejected|writing is blocked|rejected by user approval|permission denied|not permitted/i;
 
 export class DirectManualRunExecutionError extends Error {
   constructor(message, details = {}) {
@@ -44,13 +48,14 @@ export function createDirectManualRunExecutor({
     // fabricate a success we cannot observe.
     if (heartbeat?.outcome !== 'success') return reconcileUnsupervisedRun({ run, execution, reason: heartbeat?.data?.reason ?? 'attempt-not-supervised' });
     const attempt = heartbeat.data?.attempt ?? execution?.attempts?.execute ?? null;
-    const nextExecution = { ...(execution ?? {}), attempts: { ...(execution?.attempts ?? {}), execute: safeAttempt(attempt) } };
+    const diagnostics = captureDiagnostics(attempt) ?? execution?.diagnostics ?? null;
+    const nextExecution = { ...(execution ?? {}), attempts: { ...(execution?.attempts ?? {}), execute: safeAttempt(attempt) }, diagnostics };
     if (heartbeat.data?.alive === true || attempt?.status === 'Running') return { status: 'running', execution: nextExecution };
     if (attempt?.exitCode === 0) {
       const verification = verifyWorkspaceChanges(nextExecution.workspace?.worktreePath);
       const verifiedExecution = { ...nextExecution, verification };
       if (verification.changedFiles.length === 0) {
-        return { status: 'failed', error: 'Agent exited successfully but produced no workspace changes.', execution: finishWorkspace(verifiedExecution, run?.id, false) };
+        return { status: 'failed', error: describeNoChangeExit(diagnostics), execution: finishWorkspace(verifiedExecution, run?.id, false) };
       }
       return { status: 'succeeded', execution: finishWorkspace(verifiedExecution, run?.id, true) };
     }
@@ -160,6 +165,7 @@ export function createDirectManualRunExecutor({
         attempt = heartbeat.data?.attempt ?? attempt;
       }
       execution.attempts.execute = safeAttempt(attempt ?? execution.attempts.execute);
+      execution.diagnostics = captureDiagnostics(attempt) ?? execution.diagnostics ?? null;
 
       if (heartbeat.data?.alive === true || attempt?.status === 'Running') {
         return { status: 'running', summary: run.summary, artifactPath: null, execution };
@@ -167,7 +173,9 @@ export function createDirectManualRunExecutor({
       if (attempt?.exitCode === 0) {
         execution.verification = verifyWorkspaceChanges(workspace.worktreePath);
         if (execution.verification.changedFiles.length === 0) {
-          throw new DirectManualRunExecutionError('Agent exited successfully but produced no workspace changes.', {
+          // Exit 0 with nothing written is never a success: the agent may have been refused write
+          // access and still exited cleanly.
+          throw new DirectManualRunExecutionError(describeNoChangeExit(execution.diagnostics), {
             execution,
             attempt: safeAttempt(attempt)
           });
@@ -224,6 +232,37 @@ function normalizeStatusPath(value) {
 
 function hasAgentChanges(execution) {
   return (execution?.verification?.changedFiles?.length ?? 0) > 0;
+}
+
+// Adapter output is the only place an agent explains why it did nothing, so a bounded tail is
+// persisted with the run. It is redacted through the shared adapter sanitizer first, and only the
+// two output streams are kept — never argv, env, or anything credential-shaped.
+export function captureDiagnostics(attempt, { maxBytes = DIRECT_MANUAL_DIAGNOSTIC_TAIL_BYTES } = {}) {
+  if (!attempt || typeof attempt !== 'object') return null;
+  const stdout = boundedRedactedTail(attempt.stdout, maxBytes);
+  const stderr = boundedRedactedTail(attempt.stderr, maxBytes);
+  if (!stdout.text && !stderr.text) return null;
+  return {
+    stdoutTail: stdout.text,
+    stderrTail: stderr.text,
+    truncated: stdout.truncated || stderr.truncated,
+    maxBytes,
+    blocked: BLOCKED_OUTPUT_PATTERN.test(`${stdout.text}\n${stderr.text}`)
+  };
+}
+
+function boundedRedactedTail(value, maxBytes) {
+  const text = String(value ?? '');
+  if (!text) return { text: '', truncated: false };
+  const truncated = text.length > maxBytes;
+  return { text: sanitizeAdapterText(truncated ? text.slice(-maxBytes) : text), truncated };
+}
+
+function describeNoChangeExit(diagnostics) {
+  const base = 'Agent exited successfully but produced no workspace changes.';
+  return diagnostics?.blocked
+    ? `${base} The agent reported it was blocked from writing; check execution.diagnostics.`
+    : base;
 }
 
 function isAgentProducedChange(filePath) {

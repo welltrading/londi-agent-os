@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert';
 import {
   assertAdapterContractImplementation,
   CODEX_ADAPTER_ID,
+  CODEX_EXEC_SANDBOX_MODE,
+  CODEX_FORBIDDEN_SANDBOX_ARGS,
   createCodexAdapter,
   sanitizeAdapterText
 } from '../packages/adapters/src/index.js';
@@ -75,7 +77,17 @@ assert.deepEqual(start.data.attempt.args, ['--sandbox', 'workspace-write']);
 
 const delivery = await adapter.deliverTask({ attemptId: 'codex-task-1', prompt: 'Edit README', cwd: '/tmp/worktree' });
 assert.equal(delivery.outcome, 'success');
-assert.deepEqual(delivery.data.attempt.args, ['exec', 'Edit README']);
+// `codex exec` defaults to a read-only sandbox: without this flag the agent is refused every
+// write and still exits 0, which is exactly the verified no-op. Runs are confined to an isolated
+// Git worktree, so workspace-write is the correct scope.
+assert.deepEqual(delivery.data.attempt.args, ['exec', '--sandbox', 'workspace-write', 'Edit README']);
+assert.equal(CODEX_EXEC_SANDBOX_MODE, 'workspace-write');
+const deliveredArgs = delivery.data.attempt.args.join(' ');
+for (const forbidden of CODEX_FORBIDDEN_SANDBOX_ARGS) {
+  assert.equal(deliveredArgs.includes(forbidden), false, `Codex must not be invoked with ${forbidden}`);
+}
+assert.equal(deliveredArgs.includes('--full-auto'), false);
+assert.equal(delivery.data.attempt.cwd, '/tmp/worktree', 'execution stays scoped to the run worktree');
 
 const heartbeat = await adapter.heartbeat({ attemptId: 'codex-task-1' });
 assert.equal(heartbeat.outcome, 'success');
