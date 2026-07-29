@@ -7,6 +7,7 @@ Shared contracts package for configuration, compatibility, pipeline templates, a
 ## Ownership
 
 - `src/phase2-runtime.js` owns four-agent, skills, usage, project workspace, project browser snapshot, minimal run, manual run, and Obsidian Run Summary contracts.
+- Manual runs carry `intent`, `agentResponse`, and `sessionId`. `sessionId` is the agent-owned conversation thread; it is opaque, so it is shape-checked by `sanitizeAgentSessionId` and dropped when unrecognizable rather than persisted or replayed as a command-line argument.
 - `src/index.js` owns public exports.
 
 ## Local Contracts

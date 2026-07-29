@@ -8,6 +8,18 @@ export const DEFAULT_CODEX_COMMAND = 'codex';
 // is the correct one; `danger-full-access` and approval bypass are deliberately not used.
 export const CODEX_EXEC_SANDBOX_MODE = 'workspace-write';
 export const CODEX_FORBIDDEN_SANDBOX_ARGS = Object.freeze(['danger-full-access', '--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust']);
+// `codex exec resume` accepts no `--sandbox` flag, so it falls back to the read-only default and
+// silently rejects every write — the same failure `--sandbox` was added to fix. The config override
+// is the only supported way to set the mode on a resumed session.
+export const CODEX_RESUME_SANDBOX_ARGS = Object.freeze(['-c', `sandbox_mode=${CODEX_EXEC_SANDBOX_MODE}`]);
+// The CLI prints `session id: <uuid>` in its run header; the value is what `exec resume` takes.
+const CODEX_SESSION_ID_PATTERN = /session id:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
+
+export function parseCodexSessionId(value) {
+  // The header is ANSI-bold, so the escape sequences sit between the label and the id.
+  const match = CODEX_SESSION_ID_PATTERN.exec(String(value ?? '').replace(/\u001b\[[0-9;]*m/g, ''));
+  return match ? match[1] : null;
+}
 
 export function createCodexAdapter({
   command = DEFAULT_CODEX_COMMAND,
@@ -27,6 +39,9 @@ export function createCodexAdapter({
 
   return Object.freeze({
     descriptor,
+
+    // Exposed on the adapter so callers never have to know how this CLI reports its session.
+    parseSessionId: parseCodexSessionId,
 
     async health() {
       const versionCheck = runCommand(command, ['--version'], resolveInvocation);
@@ -74,14 +89,19 @@ export function createCodexAdapter({
       }
     },
 
-    async deliverTask({ attemptId, prompt, cwd, env = {}, args = [], responseFile = null } = {}) {
+    async deliverTask({ attemptId, prompt, cwd, env = {}, args = [], responseFile = null, sessionId = null } = {}) {
       if (!processManager) return adapterTerminalFailure('deliverTask', 'Process manager is required for Codex task delivery.', 'CODEX_PROCESS_MANAGER_REQUIRED');
       if (!prompt) return adapterTerminalFailure('deliverTask', 'Prompt is required for Codex task delivery.', 'CODEX_PROMPT_REQUIRED');
       try {
         // `--output-last-message` is the CLI's own contract for the agent's final message, which
         // is far more reliable than scraping it out of the interleaved transcript on stdout.
         const responseArgs = responseFile ? ['--output-last-message', responseFile] : [];
-        const invocation = resolveInvocation(command, [...args, 'exec', '--sandbox', CODEX_EXEC_SANDBOX_MODE, ...responseArgs, prompt]);
+        // Continuing a session is what carries prior turns into this one; without it every message
+        // starts cold. The sandbox mode has to be restated because `resume` has no flag for it.
+        const execArgs = sessionId
+          ? ['exec', 'resume', sessionId, ...CODEX_RESUME_SANDBOX_ARGS, ...responseArgs, prompt]
+          : ['exec', '--sandbox', CODEX_EXEC_SANDBOX_MODE, ...responseArgs, prompt];
+        const invocation = resolveInvocation(command, [...args, ...execArgs]);
         const attempt = processManager.startAttempt({ attemptId, command: invocation.command, args: invocation.args, cwd, env, spawnOptions: invocation.spawnOptions ?? {} });
         return normalizeAdapterResult({ operation: 'deliverTask', outcome: 'success', data: { attempt: snapshotAttempt(attempt) } });
       } catch (error) {

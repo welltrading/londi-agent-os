@@ -267,6 +267,69 @@ try {
   });
   const modified = await modifyExecutor({ run: manualRun('run-modify'), input: { targetBranch: 'main' }, project: { id: 'project-1', rootPath: repo } });
   assert.deepEqual(modified.execution.verification.changedFiles, [{ status: 'M', path: 'README.md' }]);
+  // Thread continuity: the first message opens a session and the id must come back so the next
+  // message can continue it. Without this every turn starts with no memory of the previous one.
+  const firstTurnCalls = [];
+  const firstTurnExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'thread-data'),
+    settleMs: 0,
+    adapterFactories: {
+      codex: () => fakeAdapter({ exitCode: 0, reportsSessions: true, sessionId: '019fae42-e725-7481-9540-06a16fb58612', received: firstTurnCalls, responseText: 'Opened the thread.' })
+    }
+  });
+  const firstTurn = await firstTurnExecutor({
+    run: manualRun('run-thread-1', 'conversation'),
+    input: { targetBranch: 'main' },
+    project: { id: 'project-1', rootPath: repo }
+  });
+  assert.equal(firstTurn.status, 'succeeded');
+  assert.deepEqual(firstTurnCalls, [null], 'the first message of a conversation has no session to resume');
+  assert.equal(firstTurn.sessionId, '019fae42-e725-7481-9540-06a16fb58612', 'the opened session id must be reported back');
+
+  const secondTurnCalls = [];
+  const secondTurnExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'thread-data'),
+    settleMs: 0,
+    adapterFactories: {
+      codex: () => fakeAdapter({ exitCode: 0, reportsSessions: true, sessionId: '019fae42-e725-7481-9540-06a16fb58612', received: secondTurnCalls, responseText: 'Continued the thread.' })
+    }
+  });
+  const secondTurn = await secondTurnExecutor({
+    run: manualRun('run-thread-2', 'conversation'),
+    input: { targetBranch: 'main', sessionId: '019fae42-e725-7481-9540-06a16fb58612' },
+    project: { id: 'project-1', rootPath: repo }
+  });
+  assert.deepEqual(secondTurnCalls, ['019fae42-e725-7481-9540-06a16fb58612'], 'the follow-up must resume the same session');
+  assert.equal(secondTurn.sessionId, '019fae42-e725-7481-9540-06a16fb58612');
+
+  // A malformed id is dropped rather than replayed into a CLI argument.
+  const rejectedCalls = [];
+  const rejectedExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'thread-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, reportsSessions: true, received: rejectedCalls, responseText: 'Fresh start.' }) }
+  });
+  const rejected = await rejectedExecutor({
+    run: manualRun('run-thread-3', 'conversation'),
+    input: { targetBranch: 'main', sessionId: '--dangerously-bypass-approvals-and-sandbox' },
+    project: { id: 'project-1', rootPath: repo }
+  });
+  assert.deepEqual(rejectedCalls, [null], 'an unrecognizable session id must never reach the CLI');
+  assert.equal(rejected.sessionId, null);
+
+  // Adapters whose CLI has no session concept must still execute normally.
+  const noSessionExecutor = createDirectManualRunExecutor({
+    dataRoot: join(root, 'thread-data'),
+    settleMs: 0,
+    adapterFactories: { codex: () => fakeAdapter({ exitCode: 0, responseText: 'No sessions here.' }) }
+  });
+  const noSession = await noSessionExecutor({
+    run: manualRun('run-thread-4', 'conversation'),
+    input: { targetBranch: 'main' },
+    project: { id: 'project-1', rootPath: repo }
+  });
+  assert.equal(noSession.status, 'succeeded');
+  assert.equal(noSession.sessionId, null);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
@@ -285,7 +348,7 @@ function unsupervisedAdapter() {
   };
 }
 
-function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null, modifyFileName = null, stdout = '', stderr = '', responseText = null } = {}) {
+function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt = null, writeFileName = null, modifyFileName = null, stdout = '', stderr = '', responseText = null, sessionId = null, reportsSessions = false, received = [] } = {}) {
   const attempt = providedAttempt ?? {
     attemptId: null,
     pid: 1234,
@@ -298,8 +361,14 @@ function fakeAdapter({ exitCode = 0, running = false, attempt: providedAttempt =
   return {
     async health() { return { outcome: 'success', data: { healthy: true } }; },
     async capabilities() { return { outcome: 'success', data: { capabilities: ['code-editing'] } }; },
-    async deliverTask({ attemptId, cwd, responseFile }) {
+    // Only adapters whose CLI reports a session expose this; the executor must tolerate its absence.
+    ...(reportsSessions ? { parseSessionId: (text) => /session id:\s*(\S+)/.exec(String(text ?? ''))?.[1] ?? null } : {}),
+    async deliverTask({ attemptId, cwd, responseFile, sessionId: requested = null }) {
+      received.push(requested);
       attempt.attemptId = attemptId;
+      // Codex prints its run header to stderr when it is not attached to a terminal, which is
+      // always the case under the process manager.
+      if (sessionId) attempt.stderr = `OpenAI Codex v0.145.0\nsession id: ${sessionId}\n${stderr}`;
       if (writeFileName) writeFileSync(join(cwd, writeFileName), 'agent produced a real change\n');
       if (modifyFileName) writeFileSync(join(cwd, modifyFileName), '# Manual run executor\n\nmodified by the agent\n');
       // Mirrors `codex exec --output-last-message`: the CLI writes its final message to this file.

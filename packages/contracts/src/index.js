@@ -36,6 +36,7 @@ export {
   PHASE2_RUN_STATUSES,
   PHASE2_RUN_INTENTS,
   DEFAULT_PHASE2_RUN_INTENT,
+  AGENT_SESSION_ID_PATTERN,
   PHASE2_DEFAULT_TARGET_BRANCHES,
   PHASE2_SKILL_IDS,
   PHASE2_SKILL_REGISTRY,
@@ -55,6 +56,7 @@ export {
   listPhase2Skills,
   normalizeAgentUsage,
   renderRunSummaryMarkdown,
+  sanitizeAgentSessionId,
   validatePhase2RuntimeContracts
 } from './phase2-runtime.js';
 

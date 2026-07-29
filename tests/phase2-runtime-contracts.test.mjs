@@ -14,6 +14,7 @@ import {
   listPhase2Skills,
   normalizeAgentUsage,
   renderRunSummaryMarkdown,
+  sanitizeAgentSessionId,
   validatePhase2RuntimeContracts
 } from '../packages/contracts/src/index.js';
 
@@ -70,6 +71,21 @@ assert.equal(codexManualRun.action, 'ask-codex-general-task');
 assert.throws(() => createManualRunRecord({ id: 'x', title: 'x', prompt: 'x', summary: 'x', agentId: 'unknown' }), Phase2RuntimeContractError);
 assert.equal(manualRun.createdAt, '2026-07-14T18:01:00.000Z');
 assert.throws(() => createManualRunRecord({ id: 'x', title: 'x', summary: 'missing prompt' }), Phase2RuntimeContractError);
+
+// The session id is agent-owned and opaque, so it is shape-checked rather than parsed. Anything
+// unrecognizable is dropped instead of being persisted and later replayed as a CLI argument.
+assert.equal(manualRun.sessionId, null, 'a run with no thread carries no session');
+const threadedRun = createManualRunRecord({ id: 'Manual Run 3', title: 'Manual Run', prompt: 'p', summary: 's', agentId: 'codex', sessionId: '019fae42-e725-7481-9540-06a16fb58612' });
+assert.equal(threadedRun.sessionId, '019fae42-e725-7481-9540-06a16fb58612');
+assert.equal(sanitizeAgentSessionId('019fae42-e725-7481-9540-06a16fb58612'), '019fae42-e725-7481-9540-06a16fb58612');
+assert.equal(sanitizeAgentSessionId('  019fae42-e725-7481-9540-06a16fb58612  '), '019fae42-e725-7481-9540-06a16fb58612');
+assert.equal(sanitizeAgentSessionId(null), null);
+assert.equal(sanitizeAgentSessionId(''), null);
+assert.equal(sanitizeAgentSessionId('short'), null);
+for (const hostile of ['--dangerously-bypass-approvals-and-sandbox', '-s danger-full-access', 'id with spaces', '../../etc/passwd', 'a;rm -rf /']) {
+  assert.equal(sanitizeAgentSessionId(hostile), null, `${hostile} must never survive as a session id`);
+  assert.equal(createManualRunRecord({ id: 'run-hostile', title: 'x', prompt: 'x', summary: 'x', sessionId: hostile }).sessionId, null);
+}
 const browserSnapshot = createProjectBrowserSnapshot({ projectId: project.id, relativePath: '.', entries: [{ name: 'src', path: 'src', type: 'directory', selectableAsContext: false }, { name: 'index.js', path: 'src/index.js', type: 'file', size: 42 }] });
 assert.equal(browserSnapshot.entries[0].type, 'directory');
 assert.equal(browserSnapshot.entries[1].selectableAsContext, true);

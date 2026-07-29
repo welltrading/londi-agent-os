@@ -130,6 +130,45 @@ try {
   assert.equal(restored.prompt, 'What is this?');
   assert.equal(restored.intent, 'conversation');
 
+  // Thread continuity: a conversation is one project talking to one agent, so a follow-up message
+  // must be handed the session id the previous message opened.
+  const threadSessions = [];
+  const threadConnector = createInMemoryHostConnector({
+    now,
+    exists: existsSync,
+    mkdir: mkdirSync,
+    writeFile: writeFileSync,
+    readFile: readFileSync,
+    runsFilePath: join(temp, 'thread', 'runs.json'),
+    projectsFilePath: join(temp, 'thread', 'projects.json'),
+    executeManualRun: async ({ input }) => {
+      threadSessions.push(input.sessionId ?? null);
+      return { status: 'succeeded', agentResponse: 'ok', sessionId: '019fae42-e725-7481-9540-06a16fb58612' };
+    }
+  });
+  const threadFirst = await threadConnector.createManualRun({ id: 'run-thread-a', title: 'First', prompt: 'Remember 42.', summary: 'First.', agentId: 'codex', projectId: 'demo', intent: 'conversation' });
+  assert.equal(threadFirst.sessionId, '019fae42-e725-7481-9540-06a16fb58612', 'the opened session is stored on the run');
+  await threadConnector.createManualRun({ id: 'run-thread-b', title: 'Second', prompt: 'What number?', summary: 'Second.', agentId: 'codex', projectId: 'demo', intent: 'conversation' });
+  assert.deepEqual(threadSessions, [null, '019fae42-e725-7481-9540-06a16fb58612'], 'the follow-up continues the same thread');
+
+  // A different agent, or a different project, is a different conversation.
+  await threadConnector.createManualRun({ id: 'run-thread-c', title: 'Other agent', prompt: 'Hi.', summary: 'Other.', agentId: 'claude-code', projectId: 'demo', intent: 'conversation' });
+  assert.equal(threadSessions[2], null, 'another agent starts its own thread');
+  await threadConnector.createManualRun({ id: 'run-thread-d', title: 'Other project', prompt: 'Hi.', summary: 'Other.', agentId: 'codex', projectId: 'other', intent: 'conversation' });
+  assert.equal(threadSessions[3], null, 'another project starts its own thread');
+
+  const rehydratedThread = createInMemoryHostConnector({
+    exists: existsSync,
+    readFile: readFileSync,
+    runsFilePath: join(temp, 'thread', 'runs.json'),
+    projectsFilePath: join(temp, 'thread', 'projects.json')
+  });
+  assert.equal(
+    rehydratedThread.listRuns().find((item) => item.id === 'run-thread-a').sessionId,
+    '019fae42-e725-7481-9540-06a16fb58612',
+    'the thread survives a restart'
+  );
+
   const runningConnector = createInMemoryHostConnector({ executeManualRun: async () => ({ status: 'running', execution: { pipeline: 'direct', attempts: { execute: { status: 'Running' } } } }) });
   const runningRun = await runningConnector.createManualRun({ id: 'run-running', title: 'Running', prompt: 'Execute.', summary: 'Started.', agentId: 'codex' });
   assert.equal(runningRun.status, 'running');

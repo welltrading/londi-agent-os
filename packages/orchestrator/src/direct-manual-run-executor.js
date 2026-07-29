@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { DEFAULT_PHASE2_RUN_INTENT, getPipelineTemplate } from '@londi-agent-os/contracts';
+import { DEFAULT_PHASE2_RUN_INTENT, getPipelineTemplate, sanitizeAgentSessionId } from '@londi-agent-os/contracts';
 import { createClaudeCodeAdapter, createCodexAdapter, sanitizeAdapterText } from '@londi-agent-os/adapters';
 import { createPipelineApprovalGate, decidePipelineApprovalGate } from './approvals.js';
 import { createAttemptProcessManager } from './process-manager.js';
@@ -56,16 +56,17 @@ export function createDirectManualRunExecutor({
     if (heartbeat.data?.alive === true || attempt?.status === 'Running') return { status: 'running', execution: nextExecution };
     const intent = run?.intent ?? execution?.intent ?? DEFAULT_PHASE2_RUN_INTENT;
     const agentResponse = readAgentResponse(createResponseFilePath(run?.id), attempt);
+    const sessionId = resolveSessionId(adapter, attempt, run?.sessionId);
     if (attempt?.exitCode === 0) {
       const verification = verifyWorkspaceChanges(nextExecution.workspace?.worktreePath);
       const verifiedExecution = { ...nextExecution, verification };
       if (intent === 'code-change' && verification.changedFiles.length === 0) {
-        return { status: 'failed', error: describeNoChangeExit(diagnostics), agentResponse, execution: finishWorkspace(verifiedExecution, run?.id, false) };
+        return { status: 'failed', error: describeNoChangeExit(diagnostics), agentResponse, sessionId, execution: finishWorkspace(verifiedExecution, run?.id, false) };
       }
       const retain = verification.changedFiles.length > 0;
-      return { status: 'succeeded', agentResponse, execution: finishWorkspace(verifiedExecution, run?.id, retain) };
+      return { status: 'succeeded', agentResponse, sessionId, execution: finishWorkspace(verifiedExecution, run?.id, retain) };
     }
-    return { status: 'failed', error: 'Direct manual run process exited unsuccessfully.', agentResponse, execution: finishWorkspace(nextExecution, run?.id, false) };
+    return { status: 'failed', error: 'Direct manual run process exited unsuccessfully.', agentResponse, sessionId, execution: finishWorkspace(nextExecution, run?.id, false) };
   }
 
   function reconcileUnsupervisedRun({ run, execution, reason }) {
@@ -109,6 +110,9 @@ export function createDirectManualRunExecutor({
 
   async function executeDirectManualRun({ run, input = {}, project } = {}) {
     const intent = run?.intent ?? input.intent ?? DEFAULT_PHASE2_RUN_INTENT;
+    // The thread this message belongs to. Absent on the first message of a conversation, in which
+    // case the agent starts a new session and reports the id back for the next one.
+    const requestedSessionId = sanitizeAgentSessionId(input.sessionId ?? run?.sessionId ?? null);
     const execution = {
       pipeline: 'direct',
       agentId: run?.agentId ?? input.agentId ?? null,
@@ -176,7 +180,7 @@ export function createDirectManualRunExecutor({
       }
 
       const attemptId = `${run.id}-execute`;
-      const delivery = await adapter.deliverTask({ attemptId, prompt: run.prompt, cwd: workspace.worktreePath, responseFile });
+      const delivery = await adapter.deliverTask({ attemptId, prompt: run.prompt, cwd: workspace.worktreePath, responseFile, sessionId: requestedSessionId });
       assertAdapterSuccess(delivery, 'deliverTask', execution);
       execution.attempts.execute = safeAttempt(delivery.data?.attempt ?? { attemptId });
 
@@ -190,8 +194,9 @@ export function createDirectManualRunExecutor({
       execution.attempts.execute = safeAttempt(attempt ?? execution.attempts.execute);
       execution.diagnostics = captureDiagnostics(attempt) ?? execution.diagnostics ?? null;
 
+      const sessionId = resolveSessionId(adapter, attempt, requestedSessionId);
       if (heartbeat.data?.alive === true || attempt?.status === 'Running') {
-        return { status: 'running', summary: run.summary, artifactPath: null, execution, agentResponse: null };
+        return { status: 'running', summary: run.summary, artifactPath: null, execution, agentResponse: null, sessionId };
       }
       const agentResponse = readAgentResponse(responseFile, attempt);
       if (attempt?.exitCode === 0) {
@@ -202,15 +207,17 @@ export function createDirectManualRunExecutor({
           throw new DirectManualRunExecutionError(describeNoChangeExit(execution.diagnostics), {
             execution,
             agentResponse,
+            sessionId,
             attempt: safeAttempt(attempt)
           });
         }
         const retain = execution.verification.changedFiles.length > 0;
-        return { status: 'succeeded', summary: run.summary, artifactPath: null, agentResponse, execution: finishWorkspace(execution, run.id, retain) };
+        return { status: 'succeeded', summary: run.summary, artifactPath: null, agentResponse, sessionId, execution: finishWorkspace(execution, run.id, retain) };
       }
       throw new DirectManualRunExecutionError('Direct manual run process exited unsuccessfully.', {
         execution,
         agentResponse,
+        sessionId,
         attempt: safeAttempt(attempt)
       });
     } catch (error) {
@@ -257,6 +264,18 @@ function normalizeStatusPath(value) {
   // contain special characters.
   const path = String(value).includes(' -> ') ? String(value).split(' -> ').pop() : String(value);
   return path.replace(/^"(.*)"$/, '$1');
+}
+
+// Read from the raw streams, not the redacted tail: the redactor is bounded to the last few KB and
+// the session header is printed first. Codex writes that header to stderr when it is not attached
+// to a terminal, so both streams are searched. Adapters with no session concept keep the thread.
+function resolveSessionId(adapter, attempt, fallback) {
+  if (typeof adapter?.parseSessionId !== 'function') return sanitizeAgentSessionId(fallback);
+  for (const stream of [attempt?.stderr, attempt?.stdout]) {
+    const reported = sanitizeAgentSessionId(adapter.parseSessionId(stream));
+    if (reported) return reported;
+  }
+  return sanitizeAgentSessionId(fallback);
 }
 
 function hasAgentChanges(execution) {

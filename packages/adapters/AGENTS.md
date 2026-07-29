@@ -12,6 +12,8 @@ Adapter contract and boundary package for approved local CLI agents.
 ## Local Contracts
 
 - Active adapters are only Claude Code and Codex in MVP/Phase 2 scope.
+- Codex executes with `--sandbox workspace-write`. A continued conversation uses `exec resume`, which has no `--sandbox` flag and therefore must restate the mode via `CODEX_RESUME_SANDBOX_ARGS`; without it the resumed turn reverts to the read-only default. `danger-full-access` and the approval-bypass flags stay unused.
+- Adapters whose CLI reports a conversation session expose `parseSessionId`; callers must treat its absence as "no thread support" rather than an error.
 - Agent Zero is orchestrator/host, not an active execution adapter.
 - Hermes is planned/display-only, not an active adapter.
 

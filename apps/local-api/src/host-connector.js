@@ -166,6 +166,7 @@ export function createInMemoryHostConnector({
             artifactPath: result.artifactPath ?? storedRun.artifactPath,
             execution: result.execution ?? storedRun.execution,
             agentResponse: result.agentResponse ?? storedRun.agentResponse,
+            sessionId: result.sessionId ?? storedRun.sessionId,
             error: result.error ?? null,
             lastUpdated: now()
           });
@@ -192,10 +193,11 @@ export function createInMemoryHostConnector({
       let run = persistManualRun({ ...input, id, createdAt, lastUpdated: createdAt, status: 'queued' });
       if (typeof executeManualRun !== 'function') return run;
 
-      run = persistManualRun({ ...run, status: 'running', lastUpdated: now() });
+      const sessionId = resolveThreadSessionId(run);
+      run = persistManualRun({ ...run, status: 'running', sessionId, lastUpdated: now() });
       const project = input.projectId ? projectStore.get(String(input.projectId).toLowerCase()) ?? projectStore.get(input.projectId) ?? null : null;
       try {
-        const result = await executeManualRun({ run, input, project });
+        const result = await executeManualRun({ run, input: { ...input, sessionId }, project });
         return persistManualRun({
           ...run,
           status: result?.status ?? 'succeeded',
@@ -203,6 +205,7 @@ export function createInMemoryHostConnector({
           artifactPath: result?.artifactPath ?? run.artifactPath,
           execution: result?.execution ?? run.execution,
           agentResponse: result?.agentResponse ?? run.agentResponse,
+          sessionId: result?.sessionId ?? run.sessionId,
           error: result?.error ?? null,
           lastUpdated: now()
         });
@@ -213,6 +216,8 @@ export function createInMemoryHostConnector({
           error: error?.message ?? 'Manual run execution failed.',
           // A failed run must still carry whatever the agent managed to say.
           agentResponse: error?.details?.agentResponse ?? run.agentResponse,
+          // A failed turn still belongs to the thread, so the next message can continue it.
+          sessionId: error?.details?.sessionId ?? run.sessionId,
           execution: {
             ...(error?.details?.execution ?? run.execution ?? {}),
             error: { code: error?.code ?? 'ERR_MANUAL_RUN_EXECUTION', message: error?.message ?? 'Manual run execution failed.' }
@@ -279,6 +284,19 @@ export function createInMemoryHostConnector({
     runStore.set(run.id, run);
     persistRunsToDisk();
     return run;
+  }
+
+  // A conversation is one project talking to one agent, so the newest run in that pair that
+  // recorded a session id is the thread a new message continues.
+  function resolveThreadSessionId(run) {
+    if (!run?.projectId || !run?.agentId) return null;
+    let latest = null;
+    for (const stored of runStore.values()) {
+      if (stored?.type !== 'manual' || !stored.sessionId || stored.id === run.id) continue;
+      if (stored.projectId !== run.projectId || stored.agentId !== run.agentId) continue;
+      if (!latest || String(stored.createdAt ?? '') > String(latest.createdAt ?? '')) latest = stored;
+    }
+    return latest?.sessionId ?? null;
   }
 
   function normalizeStoredRun(run) {

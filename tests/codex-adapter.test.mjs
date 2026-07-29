@@ -4,7 +4,9 @@ import {
   CODEX_ADAPTER_ID,
   CODEX_EXEC_SANDBOX_MODE,
   CODEX_FORBIDDEN_SANDBOX_ARGS,
+  CODEX_RESUME_SANDBOX_ARGS,
   createCodexAdapter,
+  parseCodexSessionId,
   sanitizeAdapterText
 } from '../packages/adapters/src/index.js';
 
@@ -88,6 +90,47 @@ for (const forbidden of CODEX_FORBIDDEN_SANDBOX_ARGS) {
 }
 assert.equal(deliveredArgs.includes('--full-auto'), false);
 assert.equal(delivery.data.attempt.cwd, '/tmp/worktree', 'execution stays scoped to the run worktree');
+
+// A follow-up message must continue the same session, or every turn starts with no memory of the
+// previous one. `exec resume` has no `--sandbox` flag, so the mode is restated as a config
+// override; without it the resumed turn silently falls back to the read-only default.
+const resumed = await adapter.deliverTask({
+  attemptId: 'codex-task-2',
+  prompt: 'And now the second turn',
+  cwd: '/tmp/worktree',
+  sessionId: '019fae42-e725-7481-9540-06a16fb58612'
+});
+assert.equal(resumed.outcome, 'success');
+assert.deepEqual(resumed.data.attempt.args, [
+  'exec',
+  'resume',
+  '019fae42-e725-7481-9540-06a16fb58612',
+  '-c',
+  'sandbox_mode=workspace-write',
+  'And now the second turn'
+]);
+assert.deepEqual(CODEX_RESUME_SANDBOX_ARGS, ['-c', 'sandbox_mode=workspace-write']);
+const resumedArgs = resumed.data.attempt.args.join(' ');
+assert.equal(resumedArgs.includes('--sandbox'), false, 'exec resume rejects the --sandbox flag');
+for (const forbidden of CODEX_FORBIDDEN_SANDBOX_ARGS) {
+  assert.equal(resumedArgs.includes(forbidden), false, `resumed Codex must not be invoked with ${forbidden}`);
+}
+
+// The session id is read back out of the CLI's own run header, which is ANSI-bold.
+const esc = String.fromCharCode(27);
+const header = [
+  'OpenAI Codex v0.145.0',
+  '--------',
+  `${esc}[1mworkdir:${esc}[0m C:\\tmp\\worktree`,
+  `${esc}[1msandbox:${esc}[0m workspace-write [workdir]`,
+  `${esc}[1msession id:${esc}[0m 019fae44-6399-7c92-b146-baa0bfd7650d`,
+  '--------'
+].join('\n');
+assert.equal(parseCodexSessionId(header), '019fae44-6399-7c92-b146-baa0bfd7650d');
+assert.equal(parseCodexSessionId('session id: 019fae44-6399-7c92-b146-baa0bfd7650d'), '019fae44-6399-7c92-b146-baa0bfd7650d');
+assert.equal(parseCodexSessionId('no session here'), null);
+assert.equal(parseCodexSessionId(null), null);
+assert.equal(adapter.parseSessionId(header), '019fae44-6399-7c92-b146-baa0bfd7650d');
 
 const heartbeat = await adapter.heartbeat({ attemptId: 'codex-task-1' });
 assert.equal(heartbeat.outcome, 'success');
